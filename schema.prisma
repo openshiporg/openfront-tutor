@@ -12,17 +12,19 @@ generator client {
 }
 
 model User {
-  id                      String       @id @default(cuid())
-  name                    String       @default("")
-  email                   String       @unique @default("")
+  id                      String                    @id @default(cuid())
+  name                    String                    @default("")
+  email                   String                    @unique @default("")
   password                String
-  role                    Role?        @relation("User_role", fields: [roleId], references: [id])
-  roleId                  String?      @map("role")
-  tasks                   Todo[]       @relation("Todo_assignedTo")
+  role                    Role?                     @relation("User_role", fields: [roleId], references: [id])
+  roleId                  String?                   @map("role")
+  tutorProfile            TutorProfile?             @relation("TutorProfile_owner")
+  family                  Family?                   @relation("Family_user")
+  onboardingStatus        UserOnboardingStatusType? @default(not_started)
   passwordResetToken      String?
   passwordResetIssuedAt   DateTime?
   passwordResetRedeemedAt DateTime?
-  from_OAuthToken_user    OAuthToken[] @relation("OAuthToken_user")
+  from_OAuthToken_user    OAuthToken[]              @relation("OAuthToken_user")
 
   @@index([roleId])
 }
@@ -30,54 +32,17 @@ model User {
 model Role {
   id                 String  @id @default(cuid())
   name               String  @default("")
-  canCreateTodos     Boolean @default(false)
-  canManageAllTodos  Boolean @default(false)
   canSeeOtherPeople  Boolean @default(false)
   canEditOtherPeople Boolean @default(false)
   canManagePeople    Boolean @default(false)
   canManageRoles     Boolean @default(false)
   canAccessDashboard Boolean @default(false)
+  canManageBusiness  Boolean @default(false)
+  canManageFamilies  Boolean @default(false)
+  canManageSessions  Boolean @default(false)
+  canManagePayments  Boolean @default(false)
+  canViewEarnings    Boolean @default(false)
   assignedTo         User[]  @relation("User_role")
-}
-
-model Todo {
-  id                   String      @id @default(cuid())
-  label                String      @default("")
-  description          Json        @default("[{\"type\":\"paragraph\",\"children\":[{\"text\":\"\"}]}]")
-  isComplete           Boolean     @default(false)
-  status               String?     @default("todo")
-  priority             Int?        @default(1)
-  tags                 Json        @default("[]")
-  dueDate              DateTime?
-  weight               Float?      @default(1)
-  budget               Decimal?    @default("0.00") @postgresql.Decimal(10, 2)
-  isPrivate            Boolean     @default(false)
-  largeNumber          BigInt?
-  metadata             Json?
-  secretNote           String?
-  coverImage_id        String?
-  coverImage_filesize  Int?
-  coverImage_width     Int?
-  coverImage_height    Int?
-  coverImage_extension String?
-  todoImages           TodoImage[] @relation("Todo_todoImages")
-  assignedTo           User?       @relation("Todo_assignedTo", fields: [assignedToId], references: [id])
-  assignedToId         String?     @map("assignedTo")
-
-  @@index([assignedToId])
-}
-
-model TodoImage {
-  id              String  @id @default(cuid())
-  image_id        String?
-  image_filesize  Int?
-  image_width     Int?
-  image_height    Int?
-  image_extension String?
-  imagePath       String  @default("")
-  altText         String  @default("")
-  todos           Todo[]  @relation("Todo_todoImages")
-  metadata        Json?
 }
 
 model OAuthApp {
@@ -125,4 +90,849 @@ model OAuthToken {
 
   @@index([clientId])
   @@index([userId])
+}
+
+model TutorProfile {
+  id                      String            @id @default(cuid())
+  owner                   User?             @relation("TutorProfile_owner", fields: [ownerId], references: [id])
+  ownerId                 String?           @unique @map("owner")
+  businessName            String            @default("")
+  tutorName               String            @default("")
+  slug                    String            @unique @default("")
+  headline                String            @default("")
+  bio                     String            @default("")
+  photoUrl                String            @default("")
+  qualifications          String            @default("")
+  phone                   String            @default("")
+  email                   String            @default("")
+  city                    String            @default("")
+  country                 String            @default("")
+  timezone                String            @default("America/New_York")
+  currencyCode            String            @default("USD")
+  teachesOnline           Boolean           @default(true)
+  teachesInPerson         Boolean           @default(false)
+  inPersonArea            String            @default("")
+  defaultMeetingUrl       String            @default("")
+  bookingOpen             Boolean           @default(true)
+  slotMinutes             Int               @default(30)
+  bufferMinutes           Int               @default(10)
+  minNoticeHours          Int               @default(12)
+  maxAdvanceDays          Int               @default(60)
+  cancellationWindowHours Int               @default(24)
+  lateCancelPercent       Int               @default(100)
+  noShowPercent           Int               @default(100)
+  unpaidHoldMinutes       Int               @default(60)
+  reschedulesAllowed      Int               @default(2)
+  paymentInstructions     String            @default("")
+  policiesText            String            @default("")
+  invoiceDueDays          Int               @default(7)
+  invoiceCounter          Int               @default(0)
+  reviewsEnabled          Boolean           @default(true)
+  calendarTokenHash       String            @default("")
+  subjects                Subject[]         @relation("Subject_profile")
+  sessionTypes            SessionType[]     @relation("SessionType_profile")
+  weeklyHours             WeeklyHours[]     @relation("WeeklyHours_profile")
+  timeOff                 TimeOff[]         @relation("TimeOff_profile")
+  packages                Package[]         @relation("Package_profile")
+  families                Family[]          @relation("Family_profile")
+  students                Student[]         @relation("Student_profile")
+  inquiries               Inquiry[]         @relation("Inquiry_profile")
+  reviews                 Review[]          @relation("Review_profile")
+  sessions                Session[]         @relation("Session_profile")
+  sessionNotes            SessionNote[]     @relation("SessionNote_profile")
+  homework                Homework[]        @relation("Homework_profile")
+  progressMarks           ProgressMark[]    @relation("ProgressMark_profile")
+  resources               Resource[]        @relation("Resource_profile")
+  series                  RecurringSeries[] @relation("RecurringSeries_profile")
+  purchases               PackagePurchase[] @relation("PackagePurchase_profile")
+  creditEntries           CreditEntry[]     @relation("CreditEntry_profile")
+  invoices                Invoice[]         @relation("Invoice_profile")
+  invoiceLines            InvoiceLine[]     @relation("InvoiceLine_profile")
+  payments                Payment[]         @relation("Payment_profile")
+  paymentProviders        PaymentProvider[] @relation("PaymentProvider_profile")
+  paymentSessions         PaymentSession[]  @relation("PaymentSession_profile")
+  expenses                Expense[]         @relation("Expense_profile")
+  notifications           NotificationLog[] @relation("NotificationLog_profile")
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @default(now()) @updatedAt
+}
+
+model Subject {
+  id           String        @id @default(cuid())
+  profile      TutorProfile  @relation("Subject_profile", fields: [profileId], references: [id])
+  profileId    String        @map("profile")
+  name         String        @default("")
+  levels       String        @default("")
+  sortOrder    Int?          @default(0)
+  active       Boolean       @default(true)
+  sessionTypes SessionType[] @relation("SessionType_subjects")
+  students     Student[]     @relation("Student_subjects")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @default(now()) @updatedAt
+
+  @@index([profileId])
+}
+
+model SessionType {
+  id                String              @id @default(cuid())
+  profile           TutorProfile        @relation("SessionType_profile", fields: [profileId], references: [id])
+  profileId         String              @map("profile")
+  name              String              @default("")
+  description       String              @default("")
+  durationMinutes   Int                 @default(60)
+  priceCents        Int                 @default(0)
+  mode              SessionTypeModeType @default(online)
+  openToNewFamilies Boolean             @default(false)
+  maxStudents       Int                 @default(1)
+  subjects          Subject[]           @relation("SessionType_subjects")
+  packages          Package[]           @relation("Package_appliesTo")
+  active            Boolean             @default(true)
+  sortOrder         Int?                @default(0)
+  sessions          Session[]           @relation("Session_sessionType")
+  series            RecurringSeries[]   @relation("RecurringSeries_sessionType")
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @default(now()) @updatedAt
+
+  @@index([profileId])
+}
+
+model WeeklyHours {
+  id               String                   @id @default(cuid())
+  profile          TutorProfile             @relation("WeeklyHours_profile", fields: [profileId], references: [id])
+  profileId        String                   @map("profile")
+  dayOfWeek        WeeklyHoursDayOfWeekType
+  isWorking        Boolean                  @default(true)
+  startMinute      Int                      @default(900)
+  endMinute        Int                      @default(1200)
+  breakStartMinute Int?
+  breakEndMinute   Int?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @default(now()) @updatedAt
+
+  @@index([profileId])
+}
+
+model TimeOff {
+  id        String       @id @default(cuid())
+  profile   TutorProfile @relation("TimeOff_profile", fields: [profileId], references: [id])
+  profileId String       @map("profile")
+  startsAt  DateTime
+  endsAt    DateTime
+  reason    String       @default("")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @default(now()) @updatedAt
+
+  @@index([profileId])
+}
+
+model Package {
+  id          String            @id @default(cuid())
+  profile     TutorProfile      @relation("Package_profile", fields: [profileId], references: [id])
+  profileId   String            @map("profile")
+  name        String            @default("")
+  description String            @default("")
+  minutes     Int
+  priceCents  Int
+  validMonths Int               @default(12)
+  appliesTo   SessionType[]     @relation("Package_appliesTo")
+  active      Boolean           @default(true)
+  sortOrder   Int?              @default(0)
+  purchases   PackagePurchase[] @relation("PackagePurchase_package")
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @default(now()) @updatedAt
+
+  @@index([profileId])
+}
+
+model Family {
+  id                 String                @id @default(cuid())
+  profile            TutorProfile          @relation("Family_profile", fields: [profileId], references: [id])
+  profileId          String                @map("profile")
+  guardianName       String                @default("")
+  email              String                @default("")
+  phone              String                @default("")
+  secondContactName  String                @default("")
+  secondContactPhone String                @default("")
+  status             FamilyStatusType      @default(lead)
+  billingMode        FamilyBillingModeType @default(pay_as_you_book)
+  monthlyFeeCents    Int                   @default(0)
+  address            String                @default("")
+  timezone           String                @default("")
+  howTheyFoundMe     String                @default("")
+  privateNotes       String                @default("")
+  user               User?                 @relation("Family_user", fields: [userId], references: [id])
+  userId             String?               @unique @map("user")
+  inviteTokenHash    String                @default("")
+  calendarTokenHash  String                @default("")
+  students           Student[]             @relation("Student_family")
+  sessions           Session[]             @relation("Session_family")
+  series             RecurringSeries[]     @relation("RecurringSeries_family")
+  purchases          PackagePurchase[]     @relation("PackagePurchase_family")
+  invoices           Invoice[]             @relation("Invoice_family")
+  payments           Payment[]             @relation("Payment_family")
+  reviews            Review[]              @relation("Review_family")
+  inquiries          Inquiry[]             @relation("Inquiry_family")
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([email])
+}
+
+model Student {
+  id         String            @id @default(cuid())
+  profile    TutorProfile      @relation("Student_profile", fields: [profileId], references: [id])
+  profileId  String            @map("profile")
+  family     Family?           @relation("Student_family", fields: [familyId], references: [id])
+  familyId   String?           @map("family")
+  firstName  String            @default("")
+  lastName   String            @default("")
+  level      String            @default("")
+  school     String            @default("")
+  birthYear  Int?
+  goals      String            @default("")
+  needs      String            @default("")
+  meetingUrl String            @default("")
+  status     StudentStatusType @default(active)
+  subjects   Subject[]         @relation("Student_subjects")
+  sessions   Session[]         @relation("Session_students")
+  series     RecurringSeries[] @relation("RecurringSeries_students")
+  homework   Homework[]        @relation("Homework_student")
+  marks      ProgressMark[]    @relation("ProgressMark_student")
+  resources  Resource[]        @relation("Resource_students")
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([familyId])
+}
+
+model Inquiry {
+  id           String            @id @default(cuid())
+  profile      TutorProfile      @relation("Inquiry_profile", fields: [profileId], references: [id])
+  profileId    String            @map("profile")
+  name         String            @default("")
+  email        String            @default("")
+  phone        String            @default("")
+  studentLevel String            @default("")
+  subject      String            @default("")
+  message      String            @default("")
+  status       InquiryStatusType @default(new)
+  family       Family?           @relation("Inquiry_family", fields: [familyId], references: [id])
+  familyId     String?           @map("family")
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([familyId])
+}
+
+model Review {
+  id          String           @id @default(cuid())
+  profile     TutorProfile     @relation("Review_profile", fields: [profileId], references: [id])
+  profileId   String           @map("profile")
+  family      Family?          @relation("Review_family", fields: [familyId], references: [id])
+  familyId    String?          @map("family")
+  displayName String           @default("")
+  rating      Int
+  body        String           @default("")
+  status      ReviewStatusType @default(pending)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([familyId])
+}
+
+model Session {
+  id                           String                   @id @default(cuid())
+  profile                      TutorProfile             @relation("Session_profile", fields: [profileId], references: [id])
+  profileId                    String                   @map("profile")
+  family                       Family?                  @relation("Session_family", fields: [familyId], references: [id])
+  familyId                     String?                  @map("family")
+  students                     Student[]                @relation("Session_students")
+  sessionType                  SessionType?             @relation("Session_sessionType", fields: [sessionTypeId], references: [id])
+  sessionTypeId                String?                  @map("sessionType")
+  series                       RecurringSeries?         @relation("Session_series", fields: [seriesId], references: [id])
+  seriesId                     String?                  @map("series")
+  startsAt                     DateTime
+  endsAt                       DateTime
+  mode                         SessionModeType          @default(online)
+  meetingUrl                   String                   @default("")
+  locationText                 String                   @default("")
+  status                       SessionStatusType        @default(scheduled)
+  funding                      SessionFundingType       @default(free)
+  source                       SessionSourceType        @default(tutor)
+  typeNameSnapshot             String                   @default("")
+  priceCents                   Int                      @default(0)
+  chargedCents                 Int                      @default(0)
+  chargedMinutes               Int                      @default(0)
+  billable                     SessionBillableType      @default(no)
+  paymentStatus                SessionPaymentStatusType @default(not_due)
+  holdEndsAt                   DateTime
+  guardianMessage              String                   @default("")
+  cancellationReason           String                   @default("")
+  cancelledBy                  SessionCancelledByType   @default(none)
+  cancelledAt                  DateTime
+  completedAt                  DateTime
+  rescheduleCount              Int                      @default(0)
+  rescheduledFrom              DateTime
+  reminderSentAt               DateTime
+  publicAccessTokenHash        String                   @default("")
+  note                         SessionNote?             @relation("Session_note", fields: [noteId], references: [id])
+  noteId                       String?                  @unique @map("note")
+  homework                     Homework[]               @relation("Homework_session")
+  creditEntries                CreditEntry[]            @relation("CreditEntry_session")
+  payments                     Payment[]                @relation("Payment_session")
+  paymentSessions              PaymentSession[]         @relation("PaymentSession_session")
+  invoiceLines                 InvoiceLine[]            @relation("InvoiceLine_session")
+  createdAt                    DateTime                 @default(now())
+  updatedAt                    DateTime                 @default(now()) @updatedAt
+  from_NotificationLog_session NotificationLog[]        @relation("NotificationLog_session")
+
+  @@index([profileId])
+  @@index([familyId])
+  @@index([sessionTypeId])
+  @@index([seriesId])
+}
+
+model SessionNote {
+  id          String       @id @default(cuid())
+  profile     TutorProfile @relation("SessionNote_profile", fields: [profileId], references: [id])
+  profileId   String       @map("profile")
+  session     Session?     @relation("Session_note")
+  covered     String       @default("")
+  wentWell    String       @default("")
+  workOnNext  String       @default("")
+  effort      Int?
+  privateNote String       @default("")
+  sharedAt    DateTime
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @default(now()) @updatedAt
+
+  @@index([profileId])
+}
+
+model Homework {
+  id              String             @id @default(cuid())
+  profile         TutorProfile       @relation("Homework_profile", fields: [profileId], references: [id])
+  profileId       String             @map("profile")
+  student         Student?           @relation("Homework_student", fields: [studentId], references: [id])
+  studentId       String?            @map("student")
+  session         Session?           @relation("Homework_session", fields: [sessionId], references: [id])
+  sessionId       String?            @map("session")
+  title           String             @default("")
+  instructions    String             @default("")
+  dueAt           DateTime?
+  linkUrl         String             @default("")
+  file_filesize   Int?
+  file_filename   String?
+  status          HomeworkStatusType @default(assigned)
+  handedInAt      DateTime
+  guardianComment String             @default("")
+  handInUrl       String             @default("")
+  feedback        String             @default("")
+  reviewedAt      DateTime
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([studentId])
+  @@index([sessionId])
+}
+
+model ProgressMark {
+  id        String       @id @default(cuid())
+  profile   TutorProfile @relation("ProgressMark_profile", fields: [profileId], references: [id])
+  profileId String       @map("profile")
+  student   Student?     @relation("ProgressMark_student", fields: [studentId], references: [id])
+  studentId String?      @map("student")
+  label     String       @default("")
+  takenOn   DateTime
+  score     Int
+  outOf     Int
+  note      String       @default("")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([studentId])
+}
+
+model Resource {
+  id            String       @id @default(cuid())
+  profile       TutorProfile @relation("Resource_profile", fields: [profileId], references: [id])
+  profileId     String       @map("profile")
+  title         String       @default("")
+  linkUrl       String       @default("")
+  file_filesize Int?
+  file_filename String?
+  students      Student[]    @relation("Resource_students")
+  note          String       @default("")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @default(now()) @updatedAt
+
+  @@index([profileId])
+}
+
+model RecurringSeries {
+  id               String                    @id @default(cuid())
+  profile          TutorProfile              @relation("RecurringSeries_profile", fields: [profileId], references: [id])
+  profileId        String                    @map("profile")
+  family           Family?                   @relation("RecurringSeries_family", fields: [familyId], references: [id])
+  familyId         String?                   @map("family")
+  students         Student[]                 @relation("RecurringSeries_students")
+  sessionType      SessionType?              @relation("RecurringSeries_sessionType", fields: [sessionTypeId], references: [id])
+  sessionTypeId    String?                   @map("sessionType")
+  dayOfWeek        Int
+  startMinute      Int
+  mode             RecurringSeriesModeType   @default(online)
+  startsOn         String                    @default("")
+  endsOn           String                    @default("")
+  status           RecurringSeriesStatusType @default(active)
+  generatedThrough String                    @default("")
+  skippedDates     String                    @default("")
+  sessions         Session[]                 @relation("Session_series")
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([familyId])
+  @@index([sessionTypeId])
+}
+
+model PackagePurchase {
+  id               String                    @id @default(cuid())
+  profile          TutorProfile              @relation("PackagePurchase_profile", fields: [profileId], references: [id])
+  profileId        String                    @map("profile")
+  family           Family?                   @relation("PackagePurchase_family", fields: [familyId], references: [id])
+  familyId         String?                   @map("family")
+  package          Package?                  @relation("PackagePurchase_package", fields: [packageId], references: [id])
+  packageId        String?                   @map("package")
+  nameSnapshot     String                    @default("")
+  appliesToIds     String                    @default("")
+  minutesGranted   Int                       @default(0)
+  minutesRemaining Int                       @default(0)
+  pricePaidCents   Int                       @default(0)
+  refundedCents    Int                       @default(0)
+  status           PackagePurchaseStatusType @default(awaiting_payment)
+  purchasedAt      DateTime
+  expiresAt        DateTime
+  entries          CreditEntry[]             @relation("CreditEntry_purchase")
+  payments         Payment[]                 @relation("Payment_purchase")
+  paymentSessions  PaymentSession[]          @relation("PaymentSession_purchase")
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([familyId])
+  @@index([packageId])
+}
+
+model CreditEntry {
+  id         String              @id @default(cuid())
+  profile    TutorProfile        @relation("CreditEntry_profile", fields: [profileId], references: [id])
+  profileId  String              @map("profile")
+  purchase   PackagePurchase?    @relation("CreditEntry_purchase", fields: [purchaseId], references: [id])
+  purchaseId String?             @map("purchase")
+  session    Session?            @relation("CreditEntry_session", fields: [sessionId], references: [id])
+  sessionId  String?             @map("session")
+  kind       CreditEntryKindType @default(grant)
+  minutes    Int
+  note       String              @default("")
+  key        String              @unique @default("")
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([purchaseId])
+  @@index([sessionId])
+}
+
+model Invoice {
+  id                           String            @id @default(cuid())
+  profile                      TutorProfile      @relation("Invoice_profile", fields: [profileId], references: [id])
+  profileId                    String            @map("profile")
+  family                       Family?           @relation("Invoice_family", fields: [familyId], references: [id])
+  familyId                     String?           @map("family")
+  number                       String            @default("")
+  status                       InvoiceStatusType @default(draft)
+  issuedAt                     DateTime
+  dueAt                        DateTime
+  periodMonth                  String            @default("")
+  subtotalCents                Int               @default(0)
+  totalCents                   Int               @default(0)
+  paidCents                    Int               @default(0)
+  note                         String            @default("")
+  voidedAt                     DateTime
+  lines                        InvoiceLine[]     @relation("InvoiceLine_invoice")
+  payments                     Payment[]         @relation("Payment_invoice")
+  paymentSessions              PaymentSession[]  @relation("PaymentSession_invoice")
+  publicAccessTokenHash        String            @default("")
+  createdAt                    DateTime          @default(now())
+  updatedAt                    DateTime          @default(now()) @updatedAt
+  from_NotificationLog_invoice NotificationLog[] @relation("NotificationLog_invoice")
+
+  @@unique([profileId, number])
+  @@index([profileId])
+  @@index([familyId])
+}
+
+model InvoiceLine {
+  id          String       @id @default(cuid())
+  profile     TutorProfile @relation("InvoiceLine_profile", fields: [profileId], references: [id])
+  profileId   String       @map("profile")
+  invoice     Invoice?     @relation("InvoiceLine_invoice", fields: [invoiceId], references: [id])
+  invoiceId   String?      @map("invoice")
+  session     Session?     @relation("InvoiceLine_session", fields: [sessionId], references: [id])
+  sessionId   String?      @map("session")
+  description String       @default("")
+  quantity    Int          @default(1)
+  unitCents   Int          @default(0)
+  totalCents  Int          @default(0)
+  sortOrder   Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([invoiceId])
+  @@index([sessionId])
+}
+
+model Payment {
+  id                 String            @id @default(cuid())
+  profile            TutorProfile      @relation("Payment_profile", fields: [profileId], references: [id])
+  profileId          String            @map("profile")
+  family             Family?           @relation("Payment_family", fields: [familyId], references: [id])
+  familyId           String?           @map("family")
+  session            Session?          @relation("Payment_session", fields: [sessionId], references: [id])
+  sessionId          String?           @map("session")
+  purchase           PackagePurchase?  @relation("Payment_purchase", fields: [purchaseId], references: [id])
+  purchaseId         String?           @map("purchase")
+  invoice            Invoice?          @relation("Payment_invoice", fields: [invoiceId], references: [id])
+  invoiceId          String?           @map("invoice")
+  refundOf           Payment?          @relation("Payment_refundOf", fields: [refundOfId], references: [id])
+  refundOfId         String?           @map("refundOf")
+  refunds            Payment[]         @relation("Payment_refundOf")
+  kind               PaymentKindType   @default(session)
+  method             PaymentMethodType @default(cash)
+  status             PaymentStatusType @default(confirmed)
+  amountCents        Int
+  refundedCents      Int               @default(0)
+  refundCount        Int               @default(0)
+  refundPendingCents Int               @default(0)
+  currencyCode       String            @default("USD")
+  reference          String            @default("")
+  providerReference  String            @default("")
+  paidAt             DateTime
+  reportedByGuardian Boolean           @default(false)
+  decidedAt          DateTime
+  note               String            @default("")
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([familyId])
+  @@index([sessionId])
+  @@index([purchaseId])
+  @@index([invoiceId])
+  @@index([refundOfId])
+}
+
+model PaymentProvider {
+  id                          String           @id @default(cuid())
+  profile                     TutorProfile     @relation("PaymentProvider_profile", fields: [profileId], references: [id])
+  profileId                   String           @map("profile")
+  name                        String           @default("")
+  code                        String           @default("")
+  isInstalled                 Boolean          @default(true)
+  createPaymentFunction       String           @default("manual")
+  capturePaymentFunction      String           @default("manual")
+  refundPaymentFunction       String           @default("manual")
+  getPaymentStatusFunction    String           @default("manual")
+  generatePaymentLinkFunction String           @default("manual")
+  handleWebhookFunction       String           @default("manual")
+  paymentSessions             PaymentSession[] @relation("PaymentSession_paymentProvider")
+  createdAt                   DateTime         @default(now())
+  updatedAt                   DateTime         @default(now()) @updatedAt
+
+  @@index([profileId])
+}
+
+model PaymentSession {
+  id                String                   @id @default(cuid())
+  profile           TutorProfile             @relation("PaymentSession_profile", fields: [profileId], references: [id])
+  profileId         String                   @map("profile")
+  target            PaymentSessionTargetType @default(session)
+  session           Session?                 @relation("PaymentSession_session", fields: [sessionId], references: [id])
+  sessionId         String?                  @map("session")
+  purchase          PackagePurchase?         @relation("PaymentSession_purchase", fields: [purchaseId], references: [id])
+  purchaseId        String?                  @map("purchase")
+  invoice           Invoice?                 @relation("PaymentSession_invoice", fields: [invoiceId], references: [id])
+  invoiceId         String?                  @map("invoice")
+  paymentProvider   PaymentProvider?         @relation("PaymentSession_paymentProvider", fields: [paymentProviderId], references: [id])
+  paymentProviderId String?                  @map("paymentProvider")
+  status            PaymentSessionStatusType @default(pending)
+  amountCents       Int
+  currencyCode      String                   @default("USD")
+  providerPaymentId String                   @default("")
+  expiresAt         DateTime
+  capturedAt        DateTime
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([sessionId])
+  @@index([purchaseId])
+  @@index([invoiceId])
+  @@index([paymentProviderId])
+  @@index([providerPaymentId])
+}
+
+model PaymentWebhookEvent {
+  id              String   @id @default(cuid())
+  replayKey       String   @unique @default("")
+  providerCode    String   @default("")
+  providerEventId String   @default("")
+  eventType       String   @default("")
+  payloadHash     String   @default("")
+  processedAt     DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+}
+
+model Expense {
+  id          String              @id @default(cuid())
+  profile     TutorProfile        @relation("Expense_profile", fields: [profileId], references: [id])
+  profileId   String              @map("profile")
+  spentOn     DateTime            @default(now())
+  category    ExpenseCategoryType @default(other)
+  amountCents Int
+  note        String              @default("")
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @default(now()) @updatedAt
+
+  @@index([profileId])
+}
+
+model NotificationLog {
+  id        String                    @id @default(cuid())
+  profile   TutorProfile              @relation("NotificationLog_profile", fields: [profileId], references: [id])
+  profileId String                    @map("profile")
+  kind      String                    @default("")
+  to        String                    @default("")
+  subject   String                    @default("")
+  link      String                    @default("")
+  status    NotificationLogStatusType @default(skipped)
+  error     String                    @default("")
+  session   Session?                  @relation("NotificationLog_session", fields: [sessionId], references: [id])
+  sessionId String?                   @map("session")
+  invoice   Invoice?                  @relation("NotificationLog_invoice", fields: [invoiceId], references: [id])
+  invoiceId String?                   @map("invoice")
+  createdAt DateTime                  @default(now())
+  updatedAt DateTime                  @default(now()) @updatedAt
+
+  @@index([profileId])
+  @@index([sessionId])
+  @@index([invoiceId])
+}
+
+enum UserOnboardingStatusType {
+  not_started
+  done
+  dismissed
+}
+
+enum SessionTypeModeType {
+  online
+  in_person
+  either
+}
+
+enum WeeklyHoursDayOfWeekType {
+  sunday
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+}
+
+enum FamilyStatusType {
+  lead
+  active
+  paused
+  former
+  blocked
+}
+
+enum FamilyBillingModeType {
+  pay_as_you_book
+  invoice
+  flat_monthly
+}
+
+enum StudentStatusType {
+  active
+  paused
+  finished
+}
+
+enum InquiryStatusType {
+  new
+  contacted
+  converted
+  closed
+}
+
+enum ReviewStatusType {
+  pending
+  published
+  hidden
+}
+
+enum SessionModeType {
+  online
+  in_person
+}
+
+enum SessionStatusType {
+  pending_payment
+  scheduled
+  completed
+  cancelled
+  late_cancelled
+  no_show
+  excused
+  released
+}
+
+enum SessionFundingType {
+  package
+  card
+  invoice
+  flat
+  free
+}
+
+enum SessionSourceType {
+  online
+  tutor
+  series
+}
+
+enum SessionBillableType {
+  no
+  yes
+}
+
+enum SessionPaymentStatusType {
+  not_due
+  unpaid
+  paid
+  refunded
+  part_refunded
+}
+
+enum SessionCancelledByType {
+  none
+  guardian
+  tutor
+  system
+}
+
+enum HomeworkStatusType {
+  assigned
+  handed_in
+  reviewed
+}
+
+enum RecurringSeriesModeType {
+  online
+  in_person
+}
+
+enum RecurringSeriesStatusType {
+  active
+  paused
+  ended
+}
+
+enum PackagePurchaseStatusType {
+  awaiting_payment
+  active
+  used_up
+  expired
+  refunded
+  cancelled
+}
+
+enum CreditEntryKindType {
+  grant
+  hold
+  release
+  debit
+  reversal
+  expire
+  refund
+  adjustment
+}
+
+enum InvoiceStatusType {
+  draft
+  sent
+  paid
+  void
+}
+
+enum PaymentKindType {
+  session
+  package
+  invoice
+  refund
+}
+
+enum PaymentMethodType {
+  stripe
+  cash
+  bank_transfer
+  mobile_money
+  other
+}
+
+enum PaymentStatusType {
+  reported
+  confirmed
+  rejected
+  refunded
+  partially_refunded
+}
+
+enum PaymentSessionTargetType {
+  session
+  package
+  invoice
+}
+
+enum PaymentSessionStatusType {
+  pending
+  captured
+  expired
+  cancelled
+  refunded
+}
+
+enum ExpenseCategoryType {
+  travel
+  materials
+  software
+  room
+  other
+}
+
+enum NotificationLogStatusType {
+  sent
+  failed
+  skipped
 }

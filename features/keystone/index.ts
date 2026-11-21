@@ -6,22 +6,16 @@ import { statelessSessions } from "@keystone-6/core/session";
 import { extendGraphqlSchema } from "./mutations";
 import { sendPasswordResetEmail } from "./lib/mail";
 import { withMcpBearerSessions } from "./mcp-oauth/session";
+import { ROLE_SESSION_FIELDS, TUTOR_ROLE } from "./access";
+import { fileStorage } from "./lib/storage";
 
 const databaseURL = process.env.DATABASE_URL || "file:./keystone.db";
 
 const sessionConfig = {
-  maxAge: 60 * 60 * 24 * 360, // How long they stay signed in?
+  maxAge: 60 * 60 * 24 * 360,
   secret:
     process.env.SESSION_SECRET || "this secret should only be used in testing",
 };
-
-const {
-  S3_BUCKET_NAME: bucketName = "keystone-test",
-  S3_REGION: region = "ap-southeast-2",
-  S3_ACCESS_KEY_ID: accessKeyId = "keystone",
-  S3_SECRET_ACCESS_KEY: secretAccessKey = "keystone",
-  S3_ENDPOINT: endpoint = "https://sfo3.digitaloceanspaces.com",
-} = process.env;
 
 const { withAuth } = createAuth({
   listKey: "User",
@@ -29,40 +23,19 @@ const { withAuth } = createAuth({
   secretField: "password",
   initFirstItem: {
     fields: ["name", "email", "password"],
-    itemData: {
-      role: {
-        create: {
-          name: "Admin",
-          canCreateTodos: true,
-          canManageAllTodos: true,
-          canSeeOtherPeople: true,
-          canEditOtherPeople: true,
-          canManagePeople: true,
-          canManageRoles: true,
-          canAccessDashboard: true,
-        },
-      },
-    },
+    // The first account on a deployment is the tutor who owns the business.
+    itemData: { role: { create: { ...TUTOR_ROLE } } },
   },
   passwordResetLink: {
     async sendToken(args) {
-      // send the email
       await sendPasswordResetEmail(args.token, args.identity);
     },
   },
   sessionData: `
     name
     email
-    role {
-      id
-      name
-      canCreateTodos
-      canManageAllTodos
-      canSeeOtherPeople
-      canEditOtherPeople
-      canManagePeople
-      canManageRoles
-      canAccessDashboard
+    onboardingStatus
+    role {${ROLE_SESSION_FIELDS}
     }
   `,
 });
@@ -74,19 +47,7 @@ export default withAuth(
       url: databaseURL,
     },
     lists: models,
-    storage: {
-      my_images: {
-        kind: "s3",
-        type: "image",
-        bucketName,
-        region,
-        accessKeyId,
-        secretAccessKey,
-        endpoint,
-        signed: { expiry: 5000 },
-        forcePathStyle: true,
-      },
-    },
+    storage: { tutor_files: fileStorage() },
     ui: {
       isAccessAllowed: ({ session }) => session?.data.role?.canAccessDashboard ?? false,
     },

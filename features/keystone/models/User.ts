@@ -1,22 +1,20 @@
 import { list } from '@keystone-6/core'
 import { allOperations, denyAll } from '@keystone-6/core/access'
-import { checkbox, password, relationship, text } from '@keystone-6/core/fields'
+import { password, relationship, select, text } from '@keystone-6/core/fields'
 
-import { isSignedIn, permissions, rules } from '../access'
+import { FAMILY_ROLE, isSignedIn, permissions, rules } from '../access'
 import type { Session } from '../access'
 
+/**
+ * Accounts. The first user is created by `createInitialUser` with the Tutor
+ * role. Every later sign-up gets the `Family` role (no dashboard, no generic
+ * CRUD); `role` can never be chosen by the caller.
+ */
 export const User = list({
   access: {
     operation: {
       ...allOperations(isSignedIn),
-      create: (args) => {
-        // Allow public sign-ups if environment variable is set to true
-        if (process.env.PUBLIC_SIGNUPS_ALLOWED === 'true') {
-          return true;
-        }
-        // Otherwise, require canManagePeople permission
-        return permissions.canManagePeople(args);
-      },
+      create: () => true,
       delete: permissions.canManagePeople,
     },
     filter: {
@@ -27,35 +25,32 @@ export const User = list({
   ui: {
     hideCreate: args => !permissions.canManagePeople(args),
     hideDelete: args => !permissions.canManagePeople(args),
-    listView: {
-      initialColumns: ['name', 'email', 'role', 'tasks'],
-    },
+    listView: { initialColumns: ['name', 'email', 'role'] },
     itemView: {
       defaultFieldMode: ({ session, item }) => {
-        // canEditOtherPeople can edit other people
         if (session?.data.role?.canEditOtherPeople) return 'edit'
-
-        // edit themselves
         if (session?.itemId === item?.id) return 'edit'
-
-        // else, default all fields to read mode
         return 'read'
       },
     },
   },
+  hooks: {
+    resolveInput: async ({ operation, resolvedData, context }) => {
+      const session = context.session as Session | undefined
+      if (operation !== 'create' || session?.data?.role?.canManagePeople) return resolvedData
+      const sudo = context.sudo()
+      const found = (await sudo.db.Role.findMany({ where: { name: { equals: FAMILY_ROLE.name } }, take: 1 }))[0]
+      const role = found ?? (await sudo.db.Role.createOne({ data: { ...FAMILY_ROLE } }))
+      return { ...resolvedData, role: { connect: { id: role.id } } }
+    },
+  },
   fields: {
-    name: text({
-      validation: {
-        isRequired: true,
-      },
-    }),
+    name: text({ validation: { isRequired: true } }),
     email: text({
       isFilterable: false,
       isOrderable: false,
       isIndexed: 'unique',
-      validation: {
-        isRequired: true,
-      },
+      validation: { isRequired: true },
     }),
     password: password({
       access: {
@@ -71,26 +66,19 @@ export const User = list({
         create: permissions.canManagePeople,
         update: permissions.canManagePeople,
       },
-      ui: {
-        itemView: {
-          fieldMode: args => (permissions.canManagePeople(args) ? 'edit' : 'read'),
-        },
-      },
+      ui: { itemView: { fieldMode: args => (permissions.canManagePeople(args) ? 'edit' : 'read') } },
     }),
-    tasks: relationship({
-      ref: 'Todo.assignedTo',
-      many: true,
-      access: {
-        create: permissions.canManageAllTodos,
-        update: ({ session, item }) =>
-          permissions.canManageAllTodos({ session }) || session?.itemId === item.id,
-      },
-      ui: {
-        createView: {
-          fieldMode: args => (permissions.canManageAllTodos(args) ? 'edit' : 'hidden'),
-        },
-        // itemView: { fieldMode: 'read' },
-      },
+    tutorProfile: relationship({ ref: 'TutorProfile.owner', access: { create: () => false, update: () => false }, ui: { itemView: { fieldMode: 'read' } } }),
+    family: relationship({ ref: 'Family.user', access: { create: () => false, update: () => false }, ui: { itemView: { fieldMode: 'read' } } }),
+    onboardingStatus: select({
+      type: 'enum',
+      options: [
+        { label: 'Not started', value: 'not_started' },
+        { label: 'Done', value: 'done' },
+        { label: 'Dismissed', value: 'dismissed' },
+      ],
+      defaultValue: 'not_started',
+      access: { update: ({ session, item }) => permissions.canManagePeople({ session }) || session?.itemId === item.id },
     }),
   },
-});
+})

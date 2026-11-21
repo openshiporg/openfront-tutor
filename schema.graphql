@@ -7,8 +7,9 @@ type User {
   email: String
   password: PasswordState
   role: Role
-  tasks(where: TodoWhereInput! = {}, orderBy: [TodoOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: TodoWhereUniqueInput): [Todo!]
-  tasksCount(where: TodoWhereInput! = {}): Int
+  tutorProfile: TutorProfile
+  family: Family
+  onboardingStatus: UserOnboardingStatusType
   passwordResetToken: PasswordState
   passwordResetIssuedAt: DateTime
   passwordResetRedeemedAt: DateTime
@@ -18,10 +19,18 @@ type PasswordState {
   isSet: Boolean!
 }
 
+enum UserOnboardingStatusType {
+  not_started
+  done
+  dismissed
+}
+
 scalar DateTime @specifiedBy(url: "https://datatracker.ietf.org/doc/html/rfc3339#section-5.6")
 
 input UserWhereUniqueInput {
   id: ID
+  tutorProfile: TutorProfileWhereUniqueInput
+  family: FamilyWhereUniqueInput
 }
 
 input UserWhereInput {
@@ -31,7 +40,9 @@ input UserWhereInput {
   id: IDFilter
   name: StringFilter
   role: RoleWhereInput
-  tasks: TodoManyRelationFilter
+  tutorProfile: TutorProfileWhereInput
+  family: FamilyWhereInput
+  onboardingStatus: UserOnboardingStatusTypeNullableFilter
   passwordResetToken: PasswordFilter
   passwordResetIssuedAt: DateTimeNullableFilter
   passwordResetRedeemedAt: DateTimeNullableFilter
@@ -82,10 +93,11 @@ input NestedStringFilter {
   not: NestedStringFilter
 }
 
-input TodoManyRelationFilter {
-  every: TodoWhereInput
-  some: TodoWhereInput
-  none: TodoWhereInput
+input UserOnboardingStatusTypeNullableFilter {
+  equals: UserOnboardingStatusType
+  in: [UserOnboardingStatusType!]
+  notIn: [UserOnboardingStatusType!]
+  not: UserOnboardingStatusTypeNullableFilter
 }
 
 input PasswordFilter {
@@ -106,6 +118,7 @@ input DateTimeNullableFilter {
 input UserOrderByInput {
   id: OrderDirection
   name: OrderDirection
+  onboardingStatus: OrderDirection
   passwordResetIssuedAt: OrderDirection
   passwordResetRedeemedAt: OrderDirection
 }
@@ -120,7 +133,9 @@ input UserUpdateInput {
   email: String
   password: String
   role: RoleRelateToOneForUpdateInput
-  tasks: TodoRelateToManyForUpdateInput
+  tutorProfile: TutorProfileRelateToOneForUpdateInput
+  family: FamilyRelateToOneForUpdateInput
+  onboardingStatus: UserOnboardingStatusType
   passwordResetToken: String
   passwordResetIssuedAt: DateTime
   passwordResetRedeemedAt: DateTime
@@ -132,11 +147,16 @@ input RoleRelateToOneForUpdateInput {
   disconnect: Boolean
 }
 
-input TodoRelateToManyForUpdateInput {
-  disconnect: [TodoWhereUniqueInput!]
-  set: [TodoWhereUniqueInput!]
-  create: [TodoCreateInput!]
-  connect: [TodoWhereUniqueInput!]
+input TutorProfileRelateToOneForUpdateInput {
+  create: TutorProfileCreateInput
+  connect: TutorProfileWhereUniqueInput
+  disconnect: Boolean
+}
+
+input FamilyRelateToOneForUpdateInput {
+  create: FamilyCreateInput
+  connect: FamilyWhereUniqueInput
+  disconnect: Boolean
 }
 
 input UserUpdateArgs {
@@ -149,7 +169,9 @@ input UserCreateInput {
   email: String
   password: String
   role: RoleRelateToOneForCreateInput
-  tasks: TodoRelateToManyForCreateInput
+  tutorProfile: TutorProfileRelateToOneForCreateInput
+  family: FamilyRelateToOneForCreateInput
+  onboardingStatus: UserOnboardingStatusType
   passwordResetToken: String
   passwordResetIssuedAt: DateTime
   passwordResetRedeemedAt: DateTime
@@ -160,21 +182,29 @@ input RoleRelateToOneForCreateInput {
   connect: RoleWhereUniqueInput
 }
 
-input TodoRelateToManyForCreateInput {
-  create: [TodoCreateInput!]
-  connect: [TodoWhereUniqueInput!]
+input TutorProfileRelateToOneForCreateInput {
+  create: TutorProfileCreateInput
+  connect: TutorProfileWhereUniqueInput
+}
+
+input FamilyRelateToOneForCreateInput {
+  create: FamilyCreateInput
+  connect: FamilyWhereUniqueInput
 }
 
 type Role {
   id: ID!
   name: String
-  canCreateTodos: Boolean
-  canManageAllTodos: Boolean
   canSeeOtherPeople: Boolean
   canEditOtherPeople: Boolean
   canManagePeople: Boolean
   canManageRoles: Boolean
   canAccessDashboard: Boolean
+  canManageBusiness: Boolean
+  canManageFamilies: Boolean
+  canManageSessions: Boolean
+  canManagePayments: Boolean
+  canViewEarnings: Boolean
   assignedTo(where: UserWhereInput! = {}, orderBy: [UserOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: UserWhereUniqueInput): [User!]
   assignedToCount(where: UserWhereInput! = {}): Int
 }
@@ -189,13 +219,16 @@ input RoleWhereInput {
   NOT: [RoleWhereInput!]
   id: IDFilter
   name: StringFilter
-  canCreateTodos: BooleanFilter
-  canManageAllTodos: BooleanFilter
   canSeeOtherPeople: BooleanFilter
   canEditOtherPeople: BooleanFilter
   canManagePeople: BooleanFilter
   canManageRoles: BooleanFilter
   canAccessDashboard: BooleanFilter
+  canManageBusiness: BooleanFilter
+  canManageFamilies: BooleanFilter
+  canManageSessions: BooleanFilter
+  canManagePayments: BooleanFilter
+  canViewEarnings: BooleanFilter
   assignedTo: UserManyRelationFilter
 }
 
@@ -213,24 +246,30 @@ input UserManyRelationFilter {
 input RoleOrderByInput {
   id: OrderDirection
   name: OrderDirection
-  canCreateTodos: OrderDirection
-  canManageAllTodos: OrderDirection
   canSeeOtherPeople: OrderDirection
   canEditOtherPeople: OrderDirection
   canManagePeople: OrderDirection
   canManageRoles: OrderDirection
   canAccessDashboard: OrderDirection
+  canManageBusiness: OrderDirection
+  canManageFamilies: OrderDirection
+  canManageSessions: OrderDirection
+  canManagePayments: OrderDirection
+  canViewEarnings: OrderDirection
 }
 
 input RoleUpdateInput {
   name: String
-  canCreateTodos: Boolean
-  canManageAllTodos: Boolean
   canSeeOtherPeople: Boolean
   canEditOtherPeople: Boolean
   canManagePeople: Boolean
   canManageRoles: Boolean
   canAccessDashboard: Boolean
+  canManageBusiness: Boolean
+  canManageFamilies: Boolean
+  canManageSessions: Boolean
+  canManagePayments: Boolean
+  canViewEarnings: Boolean
   assignedTo: UserRelateToManyForUpdateInput
 }
 
@@ -248,289 +287,22 @@ input RoleUpdateArgs {
 
 input RoleCreateInput {
   name: String
-  canCreateTodos: Boolean
-  canManageAllTodos: Boolean
   canSeeOtherPeople: Boolean
   canEditOtherPeople: Boolean
   canManagePeople: Boolean
   canManageRoles: Boolean
   canAccessDashboard: Boolean
+  canManageBusiness: Boolean
+  canManageFamilies: Boolean
+  canManageSessions: Boolean
+  canManagePayments: Boolean
+  canViewEarnings: Boolean
   assignedTo: UserRelateToManyForCreateInput
 }
 
 input UserRelateToManyForCreateInput {
   create: [UserCreateInput!]
   connect: [UserWhereUniqueInput!]
-}
-
-type Todo {
-  id: ID!
-  label: String
-  description: Todo_description_Document
-  isComplete: Boolean
-  status: String
-  priority: Int
-  tags: [String!]
-  dueDate: DateTime
-  weight: Float
-  budget: Decimal
-  isPrivate: Boolean
-  largeNumber: BigInt
-  metadata: JSON
-  secretNote: PasswordState
-  coverImage: ImageFieldOutput
-  todoImages(where: TodoImageWhereInput! = {}, orderBy: [TodoImageOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: TodoImageWhereUniqueInput): [TodoImage!]
-  todoImagesCount(where: TodoImageWhereInput! = {}): Int
-  assignedTo: User
-}
-
-type Todo_description_Document {
-  document(hydrateRelationships: Boolean! = false): JSON!
-}
-
-scalar Decimal
-
-scalar BigInt
-
-type ImageFieldOutput {
-  id: ID!
-  filesize: Int!
-  width: Int!
-  height: Int!
-  extension: ImageExtension!
-  url: String!
-}
-
-enum ImageExtension {
-  jpg
-  png
-  webp
-  gif
-}
-
-input TodoWhereUniqueInput {
-  id: ID
-}
-
-input TodoWhereInput {
-  AND: [TodoWhereInput!]
-  OR: [TodoWhereInput!]
-  NOT: [TodoWhereInput!]
-  id: IDFilter
-  label: StringFilter
-  isComplete: BooleanFilter
-  status: StringNullableFilter
-  priority: IntNullableFilter
-  dueDate: DateTimeNullableFilter
-  weight: FloatNullableFilter
-  budget: DecimalNullableFilter
-  isPrivate: BooleanFilter
-  largeNumber: BigIntNullableFilter
-  secretNote: PasswordFilter
-  todoImages: TodoImageManyRelationFilter
-  assignedTo: UserWhereInput
-}
-
-input StringNullableFilter {
-  equals: String
-  in: [String!]
-  notIn: [String!]
-  lt: String
-  lte: String
-  gt: String
-  gte: String
-  contains: String
-  startsWith: String
-  endsWith: String
-  mode: QueryMode
-  not: StringNullableFilter
-}
-
-input IntNullableFilter {
-  equals: Int
-  in: [Int!]
-  notIn: [Int!]
-  lt: Int
-  lte: Int
-  gt: Int
-  gte: Int
-  not: IntNullableFilter
-}
-
-input FloatNullableFilter {
-  equals: Float
-  in: [Float!]
-  notIn: [Float!]
-  lt: Float
-  lte: Float
-  gt: Float
-  gte: Float
-  not: FloatNullableFilter
-}
-
-input DecimalNullableFilter {
-  equals: Decimal
-  in: [Decimal!]
-  notIn: [Decimal!]
-  lt: Decimal
-  lte: Decimal
-  gt: Decimal
-  gte: Decimal
-  not: DecimalNullableFilter
-}
-
-input BigIntNullableFilter {
-  equals: BigInt
-  in: [BigInt!]
-  notIn: [BigInt!]
-  lt: BigInt
-  lte: BigInt
-  gt: BigInt
-  gte: BigInt
-  not: BigIntNullableFilter
-}
-
-input TodoImageManyRelationFilter {
-  every: TodoImageWhereInput
-  some: TodoImageWhereInput
-  none: TodoImageWhereInput
-}
-
-input TodoOrderByInput {
-  id: OrderDirection
-  label: OrderDirection
-  isComplete: OrderDirection
-  status: OrderDirection
-  priority: OrderDirection
-  dueDate: OrderDirection
-  weight: OrderDirection
-  budget: OrderDirection
-  isPrivate: OrderDirection
-  largeNumber: OrderDirection
-}
-
-input TodoUpdateInput {
-  label: String
-  description: JSON
-  isComplete: Boolean
-  status: String
-  priority: Int
-  tags: [String!]
-  dueDate: DateTime
-  weight: Float
-  budget: Decimal
-  isPrivate: Boolean
-  largeNumber: BigInt
-  metadata: JSON
-  secretNote: String
-  coverImage: ImageFieldInput
-  todoImages: TodoImageRelateToManyForUpdateInput
-  assignedTo: UserRelateToOneForUpdateInput
-}
-
-input ImageFieldInput {
-  upload: Upload!
-}
-
-"""The `Upload` scalar type represents a file upload."""
-scalar Upload
-
-input TodoImageRelateToManyForUpdateInput {
-  disconnect: [TodoImageWhereUniqueInput!]
-  set: [TodoImageWhereUniqueInput!]
-  create: [TodoImageCreateInput!]
-  connect: [TodoImageWhereUniqueInput!]
-}
-
-input UserRelateToOneForUpdateInput {
-  create: UserCreateInput
-  connect: UserWhereUniqueInput
-  disconnect: Boolean
-}
-
-input TodoUpdateArgs {
-  where: TodoWhereUniqueInput!
-  data: TodoUpdateInput!
-}
-
-input TodoCreateInput {
-  label: String
-  description: JSON
-  isComplete: Boolean
-  status: String
-  priority: Int
-  tags: [String!]
-  dueDate: DateTime
-  weight: Float
-  budget: Decimal
-  isPrivate: Boolean
-  largeNumber: BigInt
-  metadata: JSON
-  secretNote: String
-  coverImage: ImageFieldInput
-  todoImages: TodoImageRelateToManyForCreateInput
-  assignedTo: UserRelateToOneForCreateInput
-}
-
-input TodoImageRelateToManyForCreateInput {
-  create: [TodoImageCreateInput!]
-  connect: [TodoImageWhereUniqueInput!]
-}
-
-input UserRelateToOneForCreateInput {
-  create: UserCreateInput
-  connect: UserWhereUniqueInput
-}
-
-type TodoImage {
-  id: ID!
-  image: ImageFieldOutput
-  imagePath: String
-  altText: String
-  todos(where: TodoWhereInput! = {}, orderBy: [TodoOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: TodoWhereUniqueInput): [Todo!]
-  todosCount(where: TodoWhereInput! = {}): Int
-  metadata: JSON
-}
-
-input TodoImageWhereUniqueInput {
-  id: ID
-}
-
-input TodoImageWhereInput {
-  AND: [TodoImageWhereInput!]
-  OR: [TodoImageWhereInput!]
-  NOT: [TodoImageWhereInput!]
-  id: IDFilter
-  imagePath: StringFilter
-  altText: StringFilter
-  todos: TodoManyRelationFilter
-}
-
-input TodoImageOrderByInput {
-  id: OrderDirection
-  imagePath: OrderDirection
-  altText: OrderDirection
-}
-
-input TodoImageUpdateInput {
-  image: ImageFieldInput
-  imagePath: String
-  altText: String
-  todos: TodoRelateToManyForUpdateInput
-  metadata: JSON
-}
-
-input TodoImageUpdateArgs {
-  where: TodoImageWhereUniqueInput!
-  data: TodoImageUpdateInput!
-}
-
-input TodoImageCreateInput {
-  image: ImageFieldInput
-  imagePath: String
-  altText: String
-  todos: TodoRelateToManyForCreateInput
-  metadata: JSON
 }
 
 type OAuthApp {
@@ -580,6 +352,21 @@ input OAuthAppWhereInput {
   supportUrl: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
+}
+
+input StringNullableFilter {
+  equals: String
+  in: [String!]
+  notIn: [String!]
+  lt: String
+  lte: String
+  gt: String
+  gte: String
+  contains: String
+  startsWith: String
+  endsWith: String
+  mode: QueryMode
+  not: StringNullableFilter
 }
 
 input DateTimeFilter {
@@ -747,6 +534,12 @@ input OAuthTokenUpdateInput {
   updatedAt: DateTime
 }
 
+input UserRelateToOneForUpdateInput {
+  create: UserCreateInput
+  connect: UserWhereUniqueInput
+  disconnect: Boolean
+}
+
 input OAuthTokenUpdateArgs {
   where: OAuthTokenWhereUniqueInput!
   data: OAuthTokenUpdateInput!
@@ -772,6 +565,3702 @@ input OAuthTokenCreateInput {
   updatedAt: DateTime
 }
 
+input UserRelateToOneForCreateInput {
+  create: UserCreateInput
+  connect: UserWhereUniqueInput
+}
+
+type TutorProfile {
+  id: ID!
+  owner: User
+  businessName: String
+  tutorName: String
+  slug: String
+  headline: String
+  bio: String
+  photoUrl: String
+  qualifications: String
+  phone: String
+  email: String
+  city: String
+  country: String
+  timezone: String
+  currencyCode: String
+  teachesOnline: Boolean
+  teachesInPerson: Boolean
+  inPersonArea: String
+  defaultMeetingUrl: String
+  bookingOpen: Boolean
+  slotMinutes: Int
+  bufferMinutes: Int
+  minNoticeHours: Int
+  maxAdvanceDays: Int
+  cancellationWindowHours: Int
+  lateCancelPercent: Int
+  noShowPercent: Int
+  unpaidHoldMinutes: Int
+  reschedulesAllowed: Int
+  paymentInstructions: String
+  policiesText: String
+  invoiceDueDays: Int
+  invoiceCounter: Int
+  reviewsEnabled: Boolean
+  calendarTokenHash: String
+  subjects(where: SubjectWhereInput! = {}, orderBy: [SubjectOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SubjectWhereUniqueInput): [Subject!]
+  subjectsCount(where: SubjectWhereInput! = {}): Int
+  sessionTypes(where: SessionTypeWhereInput! = {}, orderBy: [SessionTypeOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionTypeWhereUniqueInput): [SessionType!]
+  sessionTypesCount(where: SessionTypeWhereInput! = {}): Int
+  weeklyHours(where: WeeklyHoursWhereInput! = {}, orderBy: [WeeklyHoursOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: WeeklyHoursWhereUniqueInput): [WeeklyHours!]
+  weeklyHoursCount(where: WeeklyHoursWhereInput! = {}): Int
+  timeOff(where: TimeOffWhereInput! = {}, orderBy: [TimeOffOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: TimeOffWhereUniqueInput): [TimeOff!]
+  timeOffCount(where: TimeOffWhereInput! = {}): Int
+  packages(where: PackageWhereInput! = {}, orderBy: [PackageOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PackageWhereUniqueInput): [Package!]
+  packagesCount(where: PackageWhereInput! = {}): Int
+  families(where: FamilyWhereInput! = {}, orderBy: [FamilyOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: FamilyWhereUniqueInput): [Family!]
+  familiesCount(where: FamilyWhereInput! = {}): Int
+  students(where: StudentWhereInput! = {}, orderBy: [StudentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: StudentWhereUniqueInput): [Student!]
+  studentsCount(where: StudentWhereInput! = {}): Int
+  inquiries(where: InquiryWhereInput! = {}, orderBy: [InquiryOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: InquiryWhereUniqueInput): [Inquiry!]
+  inquiriesCount(where: InquiryWhereInput! = {}): Int
+  reviews(where: ReviewWhereInput! = {}, orderBy: [ReviewOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ReviewWhereUniqueInput): [Review!]
+  reviewsCount(where: ReviewWhereInput! = {}): Int
+  sessions(where: SessionWhereInput! = {}, orderBy: [SessionOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionWhereUniqueInput): [Session!]
+  sessionsCount(where: SessionWhereInput! = {}): Int
+  sessionNotes(where: SessionNoteWhereInput! = {}, orderBy: [SessionNoteOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionNoteWhereUniqueInput): [SessionNote!]
+  sessionNotesCount(where: SessionNoteWhereInput! = {}): Int
+  homework(where: HomeworkWhereInput! = {}, orderBy: [HomeworkOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: HomeworkWhereUniqueInput): [Homework!]
+  homeworkCount(where: HomeworkWhereInput! = {}): Int
+  progressMarks(where: ProgressMarkWhereInput! = {}, orderBy: [ProgressMarkOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ProgressMarkWhereUniqueInput): [ProgressMark!]
+  progressMarksCount(where: ProgressMarkWhereInput! = {}): Int
+  resources(where: ResourceWhereInput! = {}, orderBy: [ResourceOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ResourceWhereUniqueInput): [Resource!]
+  resourcesCount(where: ResourceWhereInput! = {}): Int
+  series(where: RecurringSeriesWhereInput! = {}, orderBy: [RecurringSeriesOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: RecurringSeriesWhereUniqueInput): [RecurringSeries!]
+  seriesCount(where: RecurringSeriesWhereInput! = {}): Int
+  purchases(where: PackagePurchaseWhereInput! = {}, orderBy: [PackagePurchaseOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PackagePurchaseWhereUniqueInput): [PackagePurchase!]
+  purchasesCount(where: PackagePurchaseWhereInput! = {}): Int
+  creditEntries(where: CreditEntryWhereInput! = {}, orderBy: [CreditEntryOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: CreditEntryWhereUniqueInput): [CreditEntry!]
+  creditEntriesCount(where: CreditEntryWhereInput! = {}): Int
+  invoices(where: InvoiceWhereInput! = {}, orderBy: [InvoiceOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: InvoiceWhereUniqueInput): [Invoice!]
+  invoicesCount(where: InvoiceWhereInput! = {}): Int
+  invoiceLines(where: InvoiceLineWhereInput! = {}, orderBy: [InvoiceLineOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: InvoiceLineWhereUniqueInput): [InvoiceLine!]
+  invoiceLinesCount(where: InvoiceLineWhereInput! = {}): Int
+  payments(where: PaymentWhereInput! = {}, orderBy: [PaymentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentWhereUniqueInput): [Payment!]
+  paymentsCount(where: PaymentWhereInput! = {}): Int
+  paymentProviders(where: PaymentProviderWhereInput! = {}, orderBy: [PaymentProviderOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentProviderWhereUniqueInput): [PaymentProvider!]
+  paymentProvidersCount(where: PaymentProviderWhereInput! = {}): Int
+  paymentSessions(where: PaymentSessionWhereInput! = {}, orderBy: [PaymentSessionOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentSessionWhereUniqueInput): [PaymentSession!]
+  paymentSessionsCount(where: PaymentSessionWhereInput! = {}): Int
+  expenses(where: ExpenseWhereInput! = {}, orderBy: [ExpenseOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ExpenseWhereUniqueInput): [Expense!]
+  expensesCount(where: ExpenseWhereInput! = {}): Int
+  notifications(where: NotificationLogWhereInput! = {}, orderBy: [NotificationLogOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: NotificationLogWhereUniqueInput): [NotificationLog!]
+  notificationsCount(where: NotificationLogWhereInput! = {}): Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input TutorProfileWhereUniqueInput {
+  id: ID
+  owner: UserWhereUniqueInput
+  slug: String
+}
+
+input TutorProfileWhereInput {
+  AND: [TutorProfileWhereInput!]
+  OR: [TutorProfileWhereInput!]
+  NOT: [TutorProfileWhereInput!]
+  id: IDFilter
+  owner: UserWhereInput
+  businessName: StringFilter
+  tutorName: StringFilter
+  slug: StringFilter
+  headline: StringFilter
+  bio: StringFilter
+  photoUrl: StringFilter
+  qualifications: StringFilter
+  phone: StringFilter
+  email: StringFilter
+  city: StringFilter
+  country: StringFilter
+  timezone: StringFilter
+  currencyCode: StringFilter
+  teachesOnline: BooleanFilter
+  teachesInPerson: BooleanFilter
+  inPersonArea: StringFilter
+  defaultMeetingUrl: StringFilter
+  bookingOpen: BooleanFilter
+  slotMinutes: IntFilter
+  bufferMinutes: IntFilter
+  minNoticeHours: IntFilter
+  maxAdvanceDays: IntFilter
+  cancellationWindowHours: IntFilter
+  lateCancelPercent: IntFilter
+  noShowPercent: IntFilter
+  unpaidHoldMinutes: IntFilter
+  reschedulesAllowed: IntFilter
+  paymentInstructions: StringFilter
+  policiesText: StringFilter
+  invoiceDueDays: IntFilter
+  invoiceCounter: IntFilter
+  reviewsEnabled: BooleanFilter
+  calendarTokenHash: StringFilter
+  subjects: SubjectManyRelationFilter
+  sessionTypes: SessionTypeManyRelationFilter
+  weeklyHours: WeeklyHoursManyRelationFilter
+  timeOff: TimeOffManyRelationFilter
+  packages: PackageManyRelationFilter
+  families: FamilyManyRelationFilter
+  students: StudentManyRelationFilter
+  inquiries: InquiryManyRelationFilter
+  reviews: ReviewManyRelationFilter
+  sessions: SessionManyRelationFilter
+  sessionNotes: SessionNoteManyRelationFilter
+  homework: HomeworkManyRelationFilter
+  progressMarks: ProgressMarkManyRelationFilter
+  resources: ResourceManyRelationFilter
+  series: RecurringSeriesManyRelationFilter
+  purchases: PackagePurchaseManyRelationFilter
+  creditEntries: CreditEntryManyRelationFilter
+  invoices: InvoiceManyRelationFilter
+  invoiceLines: InvoiceLineManyRelationFilter
+  payments: PaymentManyRelationFilter
+  paymentProviders: PaymentProviderManyRelationFilter
+  paymentSessions: PaymentSessionManyRelationFilter
+  expenses: ExpenseManyRelationFilter
+  notifications: NotificationLogManyRelationFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input IntFilter {
+  equals: Int
+  in: [Int!]
+  notIn: [Int!]
+  lt: Int
+  lte: Int
+  gt: Int
+  gte: Int
+  not: IntFilter
+}
+
+input SubjectManyRelationFilter {
+  every: SubjectWhereInput
+  some: SubjectWhereInput
+  none: SubjectWhereInput
+}
+
+input SessionTypeManyRelationFilter {
+  every: SessionTypeWhereInput
+  some: SessionTypeWhereInput
+  none: SessionTypeWhereInput
+}
+
+input WeeklyHoursManyRelationFilter {
+  every: WeeklyHoursWhereInput
+  some: WeeklyHoursWhereInput
+  none: WeeklyHoursWhereInput
+}
+
+input TimeOffManyRelationFilter {
+  every: TimeOffWhereInput
+  some: TimeOffWhereInput
+  none: TimeOffWhereInput
+}
+
+input PackageManyRelationFilter {
+  every: PackageWhereInput
+  some: PackageWhereInput
+  none: PackageWhereInput
+}
+
+input FamilyManyRelationFilter {
+  every: FamilyWhereInput
+  some: FamilyWhereInput
+  none: FamilyWhereInput
+}
+
+input StudentManyRelationFilter {
+  every: StudentWhereInput
+  some: StudentWhereInput
+  none: StudentWhereInput
+}
+
+input InquiryManyRelationFilter {
+  every: InquiryWhereInput
+  some: InquiryWhereInput
+  none: InquiryWhereInput
+}
+
+input ReviewManyRelationFilter {
+  every: ReviewWhereInput
+  some: ReviewWhereInput
+  none: ReviewWhereInput
+}
+
+input SessionManyRelationFilter {
+  every: SessionWhereInput
+  some: SessionWhereInput
+  none: SessionWhereInput
+}
+
+input SessionNoteManyRelationFilter {
+  every: SessionNoteWhereInput
+  some: SessionNoteWhereInput
+  none: SessionNoteWhereInput
+}
+
+input HomeworkManyRelationFilter {
+  every: HomeworkWhereInput
+  some: HomeworkWhereInput
+  none: HomeworkWhereInput
+}
+
+input ProgressMarkManyRelationFilter {
+  every: ProgressMarkWhereInput
+  some: ProgressMarkWhereInput
+  none: ProgressMarkWhereInput
+}
+
+input ResourceManyRelationFilter {
+  every: ResourceWhereInput
+  some: ResourceWhereInput
+  none: ResourceWhereInput
+}
+
+input RecurringSeriesManyRelationFilter {
+  every: RecurringSeriesWhereInput
+  some: RecurringSeriesWhereInput
+  none: RecurringSeriesWhereInput
+}
+
+input PackagePurchaseManyRelationFilter {
+  every: PackagePurchaseWhereInput
+  some: PackagePurchaseWhereInput
+  none: PackagePurchaseWhereInput
+}
+
+input CreditEntryManyRelationFilter {
+  every: CreditEntryWhereInput
+  some: CreditEntryWhereInput
+  none: CreditEntryWhereInput
+}
+
+input InvoiceManyRelationFilter {
+  every: InvoiceWhereInput
+  some: InvoiceWhereInput
+  none: InvoiceWhereInput
+}
+
+input InvoiceLineManyRelationFilter {
+  every: InvoiceLineWhereInput
+  some: InvoiceLineWhereInput
+  none: InvoiceLineWhereInput
+}
+
+input PaymentManyRelationFilter {
+  every: PaymentWhereInput
+  some: PaymentWhereInput
+  none: PaymentWhereInput
+}
+
+input PaymentProviderManyRelationFilter {
+  every: PaymentProviderWhereInput
+  some: PaymentProviderWhereInput
+  none: PaymentProviderWhereInput
+}
+
+input PaymentSessionManyRelationFilter {
+  every: PaymentSessionWhereInput
+  some: PaymentSessionWhereInput
+  none: PaymentSessionWhereInput
+}
+
+input ExpenseManyRelationFilter {
+  every: ExpenseWhereInput
+  some: ExpenseWhereInput
+  none: ExpenseWhereInput
+}
+
+input NotificationLogManyRelationFilter {
+  every: NotificationLogWhereInput
+  some: NotificationLogWhereInput
+  none: NotificationLogWhereInput
+}
+
+input TutorProfileOrderByInput {
+  id: OrderDirection
+  businessName: OrderDirection
+  tutorName: OrderDirection
+  slug: OrderDirection
+  headline: OrderDirection
+  bio: OrderDirection
+  photoUrl: OrderDirection
+  qualifications: OrderDirection
+  phone: OrderDirection
+  email: OrderDirection
+  city: OrderDirection
+  country: OrderDirection
+  timezone: OrderDirection
+  currencyCode: OrderDirection
+  teachesOnline: OrderDirection
+  teachesInPerson: OrderDirection
+  inPersonArea: OrderDirection
+  defaultMeetingUrl: OrderDirection
+  bookingOpen: OrderDirection
+  slotMinutes: OrderDirection
+  bufferMinutes: OrderDirection
+  minNoticeHours: OrderDirection
+  maxAdvanceDays: OrderDirection
+  cancellationWindowHours: OrderDirection
+  lateCancelPercent: OrderDirection
+  noShowPercent: OrderDirection
+  unpaidHoldMinutes: OrderDirection
+  reschedulesAllowed: OrderDirection
+  paymentInstructions: OrderDirection
+  policiesText: OrderDirection
+  invoiceDueDays: OrderDirection
+  invoiceCounter: OrderDirection
+  reviewsEnabled: OrderDirection
+  calendarTokenHash: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input TutorProfileUpdateInput {
+  owner: UserRelateToOneForUpdateInput
+  businessName: String
+  tutorName: String
+  slug: String
+  headline: String
+  bio: String
+  photoUrl: String
+  qualifications: String
+  phone: String
+  email: String
+  city: String
+  country: String
+  timezone: String
+  currencyCode: String
+  teachesOnline: Boolean
+  teachesInPerson: Boolean
+  inPersonArea: String
+  defaultMeetingUrl: String
+  bookingOpen: Boolean
+  slotMinutes: Int
+  bufferMinutes: Int
+  minNoticeHours: Int
+  maxAdvanceDays: Int
+  cancellationWindowHours: Int
+  lateCancelPercent: Int
+  noShowPercent: Int
+  unpaidHoldMinutes: Int
+  reschedulesAllowed: Int
+  paymentInstructions: String
+  policiesText: String
+  invoiceDueDays: Int
+  invoiceCounter: Int
+  reviewsEnabled: Boolean
+  calendarTokenHash: String
+  subjects: SubjectRelateToManyForUpdateInput
+  sessionTypes: SessionTypeRelateToManyForUpdateInput
+  weeklyHours: WeeklyHoursRelateToManyForUpdateInput
+  timeOff: TimeOffRelateToManyForUpdateInput
+  packages: PackageRelateToManyForUpdateInput
+  families: FamilyRelateToManyForUpdateInput
+  students: StudentRelateToManyForUpdateInput
+  inquiries: InquiryRelateToManyForUpdateInput
+  reviews: ReviewRelateToManyForUpdateInput
+  sessions: SessionRelateToManyForUpdateInput
+  sessionNotes: SessionNoteRelateToManyForUpdateInput
+  homework: HomeworkRelateToManyForUpdateInput
+  progressMarks: ProgressMarkRelateToManyForUpdateInput
+  resources: ResourceRelateToManyForUpdateInput
+  series: RecurringSeriesRelateToManyForUpdateInput
+  purchases: PackagePurchaseRelateToManyForUpdateInput
+  creditEntries: CreditEntryRelateToManyForUpdateInput
+  invoices: InvoiceRelateToManyForUpdateInput
+  invoiceLines: InvoiceLineRelateToManyForUpdateInput
+  payments: PaymentRelateToManyForUpdateInput
+  paymentProviders: PaymentProviderRelateToManyForUpdateInput
+  paymentSessions: PaymentSessionRelateToManyForUpdateInput
+  expenses: ExpenseRelateToManyForUpdateInput
+  notifications: NotificationLogRelateToManyForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input SubjectRelateToManyForUpdateInput {
+  disconnect: [SubjectWhereUniqueInput!]
+  set: [SubjectWhereUniqueInput!]
+  create: [SubjectCreateInput!]
+  connect: [SubjectWhereUniqueInput!]
+}
+
+input SessionTypeRelateToManyForUpdateInput {
+  disconnect: [SessionTypeWhereUniqueInput!]
+  set: [SessionTypeWhereUniqueInput!]
+  create: [SessionTypeCreateInput!]
+  connect: [SessionTypeWhereUniqueInput!]
+}
+
+input WeeklyHoursRelateToManyForUpdateInput {
+  disconnect: [WeeklyHoursWhereUniqueInput!]
+  set: [WeeklyHoursWhereUniqueInput!]
+  create: [WeeklyHoursCreateInput!]
+  connect: [WeeklyHoursWhereUniqueInput!]
+}
+
+input TimeOffRelateToManyForUpdateInput {
+  disconnect: [TimeOffWhereUniqueInput!]
+  set: [TimeOffWhereUniqueInput!]
+  create: [TimeOffCreateInput!]
+  connect: [TimeOffWhereUniqueInput!]
+}
+
+input PackageRelateToManyForUpdateInput {
+  disconnect: [PackageWhereUniqueInput!]
+  set: [PackageWhereUniqueInput!]
+  create: [PackageCreateInput!]
+  connect: [PackageWhereUniqueInput!]
+}
+
+input FamilyRelateToManyForUpdateInput {
+  disconnect: [FamilyWhereUniqueInput!]
+  set: [FamilyWhereUniqueInput!]
+  create: [FamilyCreateInput!]
+  connect: [FamilyWhereUniqueInput!]
+}
+
+input StudentRelateToManyForUpdateInput {
+  disconnect: [StudentWhereUniqueInput!]
+  set: [StudentWhereUniqueInput!]
+  create: [StudentCreateInput!]
+  connect: [StudentWhereUniqueInput!]
+}
+
+input InquiryRelateToManyForUpdateInput {
+  disconnect: [InquiryWhereUniqueInput!]
+  set: [InquiryWhereUniqueInput!]
+  create: [InquiryCreateInput!]
+  connect: [InquiryWhereUniqueInput!]
+}
+
+input ReviewRelateToManyForUpdateInput {
+  disconnect: [ReviewWhereUniqueInput!]
+  set: [ReviewWhereUniqueInput!]
+  create: [ReviewCreateInput!]
+  connect: [ReviewWhereUniqueInput!]
+}
+
+input SessionRelateToManyForUpdateInput {
+  disconnect: [SessionWhereUniqueInput!]
+  set: [SessionWhereUniqueInput!]
+  create: [SessionCreateInput!]
+  connect: [SessionWhereUniqueInput!]
+}
+
+input SessionNoteRelateToManyForUpdateInput {
+  disconnect: [SessionNoteWhereUniqueInput!]
+  set: [SessionNoteWhereUniqueInput!]
+  create: [SessionNoteCreateInput!]
+  connect: [SessionNoteWhereUniqueInput!]
+}
+
+input HomeworkRelateToManyForUpdateInput {
+  disconnect: [HomeworkWhereUniqueInput!]
+  set: [HomeworkWhereUniqueInput!]
+  create: [HomeworkCreateInput!]
+  connect: [HomeworkWhereUniqueInput!]
+}
+
+input ProgressMarkRelateToManyForUpdateInput {
+  disconnect: [ProgressMarkWhereUniqueInput!]
+  set: [ProgressMarkWhereUniqueInput!]
+  create: [ProgressMarkCreateInput!]
+  connect: [ProgressMarkWhereUniqueInput!]
+}
+
+input ResourceRelateToManyForUpdateInput {
+  disconnect: [ResourceWhereUniqueInput!]
+  set: [ResourceWhereUniqueInput!]
+  create: [ResourceCreateInput!]
+  connect: [ResourceWhereUniqueInput!]
+}
+
+input RecurringSeriesRelateToManyForUpdateInput {
+  disconnect: [RecurringSeriesWhereUniqueInput!]
+  set: [RecurringSeriesWhereUniqueInput!]
+  create: [RecurringSeriesCreateInput!]
+  connect: [RecurringSeriesWhereUniqueInput!]
+}
+
+input PackagePurchaseRelateToManyForUpdateInput {
+  disconnect: [PackagePurchaseWhereUniqueInput!]
+  set: [PackagePurchaseWhereUniqueInput!]
+  create: [PackagePurchaseCreateInput!]
+  connect: [PackagePurchaseWhereUniqueInput!]
+}
+
+input CreditEntryRelateToManyForUpdateInput {
+  disconnect: [CreditEntryWhereUniqueInput!]
+  set: [CreditEntryWhereUniqueInput!]
+  create: [CreditEntryCreateInput!]
+  connect: [CreditEntryWhereUniqueInput!]
+}
+
+input InvoiceRelateToManyForUpdateInput {
+  disconnect: [InvoiceWhereUniqueInput!]
+  set: [InvoiceWhereUniqueInput!]
+  create: [InvoiceCreateInput!]
+  connect: [InvoiceWhereUniqueInput!]
+}
+
+input InvoiceLineRelateToManyForUpdateInput {
+  disconnect: [InvoiceLineWhereUniqueInput!]
+  set: [InvoiceLineWhereUniqueInput!]
+  create: [InvoiceLineCreateInput!]
+  connect: [InvoiceLineWhereUniqueInput!]
+}
+
+input PaymentRelateToManyForUpdateInput {
+  disconnect: [PaymentWhereUniqueInput!]
+  set: [PaymentWhereUniqueInput!]
+  create: [PaymentCreateInput!]
+  connect: [PaymentWhereUniqueInput!]
+}
+
+input PaymentProviderRelateToManyForUpdateInput {
+  disconnect: [PaymentProviderWhereUniqueInput!]
+  set: [PaymentProviderWhereUniqueInput!]
+  create: [PaymentProviderCreateInput!]
+  connect: [PaymentProviderWhereUniqueInput!]
+}
+
+input PaymentSessionRelateToManyForUpdateInput {
+  disconnect: [PaymentSessionWhereUniqueInput!]
+  set: [PaymentSessionWhereUniqueInput!]
+  create: [PaymentSessionCreateInput!]
+  connect: [PaymentSessionWhereUniqueInput!]
+}
+
+input ExpenseRelateToManyForUpdateInput {
+  disconnect: [ExpenseWhereUniqueInput!]
+  set: [ExpenseWhereUniqueInput!]
+  create: [ExpenseCreateInput!]
+  connect: [ExpenseWhereUniqueInput!]
+}
+
+input NotificationLogRelateToManyForUpdateInput {
+  disconnect: [NotificationLogWhereUniqueInput!]
+  set: [NotificationLogWhereUniqueInput!]
+  create: [NotificationLogCreateInput!]
+  connect: [NotificationLogWhereUniqueInput!]
+}
+
+input TutorProfileUpdateArgs {
+  where: TutorProfileWhereUniqueInput!
+  data: TutorProfileUpdateInput!
+}
+
+input TutorProfileCreateInput {
+  owner: UserRelateToOneForCreateInput
+  businessName: String
+  tutorName: String
+  slug: String
+  headline: String
+  bio: String
+  photoUrl: String
+  qualifications: String
+  phone: String
+  email: String
+  city: String
+  country: String
+  timezone: String
+  currencyCode: String
+  teachesOnline: Boolean
+  teachesInPerson: Boolean
+  inPersonArea: String
+  defaultMeetingUrl: String
+  bookingOpen: Boolean
+  slotMinutes: Int
+  bufferMinutes: Int
+  minNoticeHours: Int
+  maxAdvanceDays: Int
+  cancellationWindowHours: Int
+  lateCancelPercent: Int
+  noShowPercent: Int
+  unpaidHoldMinutes: Int
+  reschedulesAllowed: Int
+  paymentInstructions: String
+  policiesText: String
+  invoiceDueDays: Int
+  invoiceCounter: Int
+  reviewsEnabled: Boolean
+  calendarTokenHash: String
+  subjects: SubjectRelateToManyForCreateInput
+  sessionTypes: SessionTypeRelateToManyForCreateInput
+  weeklyHours: WeeklyHoursRelateToManyForCreateInput
+  timeOff: TimeOffRelateToManyForCreateInput
+  packages: PackageRelateToManyForCreateInput
+  families: FamilyRelateToManyForCreateInput
+  students: StudentRelateToManyForCreateInput
+  inquiries: InquiryRelateToManyForCreateInput
+  reviews: ReviewRelateToManyForCreateInput
+  sessions: SessionRelateToManyForCreateInput
+  sessionNotes: SessionNoteRelateToManyForCreateInput
+  homework: HomeworkRelateToManyForCreateInput
+  progressMarks: ProgressMarkRelateToManyForCreateInput
+  resources: ResourceRelateToManyForCreateInput
+  series: RecurringSeriesRelateToManyForCreateInput
+  purchases: PackagePurchaseRelateToManyForCreateInput
+  creditEntries: CreditEntryRelateToManyForCreateInput
+  invoices: InvoiceRelateToManyForCreateInput
+  invoiceLines: InvoiceLineRelateToManyForCreateInput
+  payments: PaymentRelateToManyForCreateInput
+  paymentProviders: PaymentProviderRelateToManyForCreateInput
+  paymentSessions: PaymentSessionRelateToManyForCreateInput
+  expenses: ExpenseRelateToManyForCreateInput
+  notifications: NotificationLogRelateToManyForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input SubjectRelateToManyForCreateInput {
+  create: [SubjectCreateInput!]
+  connect: [SubjectWhereUniqueInput!]
+}
+
+input SessionTypeRelateToManyForCreateInput {
+  create: [SessionTypeCreateInput!]
+  connect: [SessionTypeWhereUniqueInput!]
+}
+
+input WeeklyHoursRelateToManyForCreateInput {
+  create: [WeeklyHoursCreateInput!]
+  connect: [WeeklyHoursWhereUniqueInput!]
+}
+
+input TimeOffRelateToManyForCreateInput {
+  create: [TimeOffCreateInput!]
+  connect: [TimeOffWhereUniqueInput!]
+}
+
+input PackageRelateToManyForCreateInput {
+  create: [PackageCreateInput!]
+  connect: [PackageWhereUniqueInput!]
+}
+
+input FamilyRelateToManyForCreateInput {
+  create: [FamilyCreateInput!]
+  connect: [FamilyWhereUniqueInput!]
+}
+
+input StudentRelateToManyForCreateInput {
+  create: [StudentCreateInput!]
+  connect: [StudentWhereUniqueInput!]
+}
+
+input InquiryRelateToManyForCreateInput {
+  create: [InquiryCreateInput!]
+  connect: [InquiryWhereUniqueInput!]
+}
+
+input ReviewRelateToManyForCreateInput {
+  create: [ReviewCreateInput!]
+  connect: [ReviewWhereUniqueInput!]
+}
+
+input SessionRelateToManyForCreateInput {
+  create: [SessionCreateInput!]
+  connect: [SessionWhereUniqueInput!]
+}
+
+input SessionNoteRelateToManyForCreateInput {
+  create: [SessionNoteCreateInput!]
+  connect: [SessionNoteWhereUniqueInput!]
+}
+
+input HomeworkRelateToManyForCreateInput {
+  create: [HomeworkCreateInput!]
+  connect: [HomeworkWhereUniqueInput!]
+}
+
+input ProgressMarkRelateToManyForCreateInput {
+  create: [ProgressMarkCreateInput!]
+  connect: [ProgressMarkWhereUniqueInput!]
+}
+
+input ResourceRelateToManyForCreateInput {
+  create: [ResourceCreateInput!]
+  connect: [ResourceWhereUniqueInput!]
+}
+
+input RecurringSeriesRelateToManyForCreateInput {
+  create: [RecurringSeriesCreateInput!]
+  connect: [RecurringSeriesWhereUniqueInput!]
+}
+
+input PackagePurchaseRelateToManyForCreateInput {
+  create: [PackagePurchaseCreateInput!]
+  connect: [PackagePurchaseWhereUniqueInput!]
+}
+
+input CreditEntryRelateToManyForCreateInput {
+  create: [CreditEntryCreateInput!]
+  connect: [CreditEntryWhereUniqueInput!]
+}
+
+input InvoiceRelateToManyForCreateInput {
+  create: [InvoiceCreateInput!]
+  connect: [InvoiceWhereUniqueInput!]
+}
+
+input InvoiceLineRelateToManyForCreateInput {
+  create: [InvoiceLineCreateInput!]
+  connect: [InvoiceLineWhereUniqueInput!]
+}
+
+input PaymentRelateToManyForCreateInput {
+  create: [PaymentCreateInput!]
+  connect: [PaymentWhereUniqueInput!]
+}
+
+input PaymentProviderRelateToManyForCreateInput {
+  create: [PaymentProviderCreateInput!]
+  connect: [PaymentProviderWhereUniqueInput!]
+}
+
+input PaymentSessionRelateToManyForCreateInput {
+  create: [PaymentSessionCreateInput!]
+  connect: [PaymentSessionWhereUniqueInput!]
+}
+
+input ExpenseRelateToManyForCreateInput {
+  create: [ExpenseCreateInput!]
+  connect: [ExpenseWhereUniqueInput!]
+}
+
+input NotificationLogRelateToManyForCreateInput {
+  create: [NotificationLogCreateInput!]
+  connect: [NotificationLogWhereUniqueInput!]
+}
+
+type Subject {
+  id: ID!
+  profile: TutorProfile
+  name: String
+  levels: String
+  sortOrder: Int
+  active: Boolean
+  sessionTypes(where: SessionTypeWhereInput! = {}, orderBy: [SessionTypeOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionTypeWhereUniqueInput): [SessionType!]
+  sessionTypesCount(where: SessionTypeWhereInput! = {}): Int
+  students(where: StudentWhereInput! = {}, orderBy: [StudentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: StudentWhereUniqueInput): [Student!]
+  studentsCount(where: StudentWhereInput! = {}): Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input SubjectWhereUniqueInput {
+  id: ID
+}
+
+input SubjectWhereInput {
+  AND: [SubjectWhereInput!]
+  OR: [SubjectWhereInput!]
+  NOT: [SubjectWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  name: StringFilter
+  levels: StringFilter
+  sortOrder: IntNullableFilter
+  active: BooleanFilter
+  sessionTypes: SessionTypeManyRelationFilter
+  students: StudentManyRelationFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input IntNullableFilter {
+  equals: Int
+  in: [Int!]
+  notIn: [Int!]
+  lt: Int
+  lte: Int
+  gt: Int
+  gte: Int
+  not: IntNullableFilter
+}
+
+input SubjectOrderByInput {
+  id: OrderDirection
+  name: OrderDirection
+  levels: OrderDirection
+  sortOrder: OrderDirection
+  active: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input SubjectUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  name: String
+  levels: String
+  sortOrder: Int
+  active: Boolean
+  sessionTypes: SessionTypeRelateToManyForUpdateInput
+  students: StudentRelateToManyForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input SubjectUpdateArgs {
+  where: SubjectWhereUniqueInput!
+  data: SubjectUpdateInput!
+}
+
+input SubjectCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  name: String
+  levels: String
+  sortOrder: Int
+  active: Boolean
+  sessionTypes: SessionTypeRelateToManyForCreateInput
+  students: StudentRelateToManyForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type SessionType {
+  id: ID!
+  profile: TutorProfile
+  name: String
+  description: String
+  durationMinutes: Int
+  priceCents: Int
+  mode: SessionTypeModeType
+  openToNewFamilies: Boolean
+  maxStudents: Int
+  subjects(where: SubjectWhereInput! = {}, orderBy: [SubjectOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SubjectWhereUniqueInput): [Subject!]
+  subjectsCount(where: SubjectWhereInput! = {}): Int
+  packages(where: PackageWhereInput! = {}, orderBy: [PackageOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PackageWhereUniqueInput): [Package!]
+  packagesCount(where: PackageWhereInput! = {}): Int
+  active: Boolean
+  sortOrder: Int
+  sessions(where: SessionWhereInput! = {}, orderBy: [SessionOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionWhereUniqueInput): [Session!]
+  sessionsCount(where: SessionWhereInput! = {}): Int
+  series(where: RecurringSeriesWhereInput! = {}, orderBy: [RecurringSeriesOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: RecurringSeriesWhereUniqueInput): [RecurringSeries!]
+  seriesCount(where: RecurringSeriesWhereInput! = {}): Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum SessionTypeModeType {
+  online
+  in_person
+  either
+}
+
+input SessionTypeWhereUniqueInput {
+  id: ID
+}
+
+input SessionTypeWhereInput {
+  AND: [SessionTypeWhereInput!]
+  OR: [SessionTypeWhereInput!]
+  NOT: [SessionTypeWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  name: StringFilter
+  description: StringFilter
+  durationMinutes: IntFilter
+  priceCents: IntFilter
+  mode: SessionTypeModeTypeNullableFilter
+  openToNewFamilies: BooleanFilter
+  maxStudents: IntFilter
+  subjects: SubjectManyRelationFilter
+  packages: PackageManyRelationFilter
+  active: BooleanFilter
+  sortOrder: IntNullableFilter
+  sessions: SessionManyRelationFilter
+  series: RecurringSeriesManyRelationFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input SessionTypeModeTypeNullableFilter {
+  equals: SessionTypeModeType
+  in: [SessionTypeModeType!]
+  notIn: [SessionTypeModeType!]
+  not: SessionTypeModeTypeNullableFilter
+}
+
+input SessionTypeOrderByInput {
+  id: OrderDirection
+  name: OrderDirection
+  description: OrderDirection
+  durationMinutes: OrderDirection
+  priceCents: OrderDirection
+  mode: OrderDirection
+  openToNewFamilies: OrderDirection
+  maxStudents: OrderDirection
+  active: OrderDirection
+  sortOrder: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input SessionTypeUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  name: String
+  description: String
+  durationMinutes: Int
+  priceCents: Int
+  mode: SessionTypeModeType
+  openToNewFamilies: Boolean
+  maxStudents: Int
+  subjects: SubjectRelateToManyForUpdateInput
+  packages: PackageRelateToManyForUpdateInput
+  active: Boolean
+  sortOrder: Int
+  sessions: SessionRelateToManyForUpdateInput
+  series: RecurringSeriesRelateToManyForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input SessionTypeUpdateArgs {
+  where: SessionTypeWhereUniqueInput!
+  data: SessionTypeUpdateInput!
+}
+
+input SessionTypeCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  name: String
+  description: String
+  durationMinutes: Int
+  priceCents: Int
+  mode: SessionTypeModeType
+  openToNewFamilies: Boolean
+  maxStudents: Int
+  subjects: SubjectRelateToManyForCreateInput
+  packages: PackageRelateToManyForCreateInput
+  active: Boolean
+  sortOrder: Int
+  sessions: SessionRelateToManyForCreateInput
+  series: RecurringSeriesRelateToManyForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type WeeklyHours {
+  id: ID!
+  profile: TutorProfile
+  dayOfWeek: WeeklyHoursDayOfWeekType
+  isWorking: Boolean
+  startMinute: Int
+  endMinute: Int
+  breakStartMinute: Int
+  breakEndMinute: Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum WeeklyHoursDayOfWeekType {
+  sunday
+  monday
+  tuesday
+  wednesday
+  thursday
+  friday
+  saturday
+}
+
+input WeeklyHoursWhereUniqueInput {
+  id: ID
+}
+
+input WeeklyHoursWhereInput {
+  AND: [WeeklyHoursWhereInput!]
+  OR: [WeeklyHoursWhereInput!]
+  NOT: [WeeklyHoursWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  dayOfWeek: WeeklyHoursDayOfWeekTypeNullableFilter
+  isWorking: BooleanFilter
+  startMinute: IntFilter
+  endMinute: IntFilter
+  breakStartMinute: IntNullableFilter
+  breakEndMinute: IntNullableFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input WeeklyHoursDayOfWeekTypeNullableFilter {
+  equals: WeeklyHoursDayOfWeekType
+  in: [WeeklyHoursDayOfWeekType!]
+  notIn: [WeeklyHoursDayOfWeekType!]
+  not: WeeklyHoursDayOfWeekTypeNullableFilter
+}
+
+input WeeklyHoursOrderByInput {
+  id: OrderDirection
+  dayOfWeek: OrderDirection
+  isWorking: OrderDirection
+  startMinute: OrderDirection
+  endMinute: OrderDirection
+  breakStartMinute: OrderDirection
+  breakEndMinute: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input WeeklyHoursUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  dayOfWeek: WeeklyHoursDayOfWeekType
+  isWorking: Boolean
+  startMinute: Int
+  endMinute: Int
+  breakStartMinute: Int
+  breakEndMinute: Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input WeeklyHoursUpdateArgs {
+  where: WeeklyHoursWhereUniqueInput!
+  data: WeeklyHoursUpdateInput!
+}
+
+input WeeklyHoursCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  dayOfWeek: WeeklyHoursDayOfWeekType
+  isWorking: Boolean
+  startMinute: Int
+  endMinute: Int
+  breakStartMinute: Int
+  breakEndMinute: Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type TimeOff {
+  id: ID!
+  profile: TutorProfile
+  startsAt: DateTime
+  endsAt: DateTime
+  reason: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input TimeOffWhereUniqueInput {
+  id: ID
+}
+
+input TimeOffWhereInput {
+  AND: [TimeOffWhereInput!]
+  OR: [TimeOffWhereInput!]
+  NOT: [TimeOffWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  startsAt: DateTimeFilter
+  endsAt: DateTimeFilter
+  reason: StringFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input TimeOffOrderByInput {
+  id: OrderDirection
+  startsAt: OrderDirection
+  endsAt: OrderDirection
+  reason: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input TimeOffUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  startsAt: DateTime
+  endsAt: DateTime
+  reason: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input TimeOffUpdateArgs {
+  where: TimeOffWhereUniqueInput!
+  data: TimeOffUpdateInput!
+}
+
+input TimeOffCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  startsAt: DateTime
+  endsAt: DateTime
+  reason: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type Package {
+  id: ID!
+  profile: TutorProfile
+  name: String
+  description: String
+  minutes: Int
+  priceCents: Int
+  validMonths: Int
+  appliesTo(where: SessionTypeWhereInput! = {}, orderBy: [SessionTypeOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionTypeWhereUniqueInput): [SessionType!]
+  appliesToCount(where: SessionTypeWhereInput! = {}): Int
+  active: Boolean
+  sortOrder: Int
+  purchases(where: PackagePurchaseWhereInput! = {}, orderBy: [PackagePurchaseOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PackagePurchaseWhereUniqueInput): [PackagePurchase!]
+  purchasesCount(where: PackagePurchaseWhereInput! = {}): Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PackageWhereUniqueInput {
+  id: ID
+}
+
+input PackageWhereInput {
+  AND: [PackageWhereInput!]
+  OR: [PackageWhereInput!]
+  NOT: [PackageWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  name: StringFilter
+  description: StringFilter
+  minutes: IntFilter
+  priceCents: IntFilter
+  validMonths: IntFilter
+  appliesTo: SessionTypeManyRelationFilter
+  active: BooleanFilter
+  sortOrder: IntNullableFilter
+  purchases: PackagePurchaseManyRelationFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input PackageOrderByInput {
+  id: OrderDirection
+  name: OrderDirection
+  description: OrderDirection
+  minutes: OrderDirection
+  priceCents: OrderDirection
+  validMonths: OrderDirection
+  active: OrderDirection
+  sortOrder: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input PackageUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  name: String
+  description: String
+  minutes: Int
+  priceCents: Int
+  validMonths: Int
+  appliesTo: SessionTypeRelateToManyForUpdateInput
+  active: Boolean
+  sortOrder: Int
+  purchases: PackagePurchaseRelateToManyForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PackageUpdateArgs {
+  where: PackageWhereUniqueInput!
+  data: PackageUpdateInput!
+}
+
+input PackageCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  name: String
+  description: String
+  minutes: Int
+  priceCents: Int
+  validMonths: Int
+  appliesTo: SessionTypeRelateToManyForCreateInput
+  active: Boolean
+  sortOrder: Int
+  purchases: PackagePurchaseRelateToManyForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type Family {
+  id: ID!
+  profile: TutorProfile
+  guardianName: String
+  email: String
+  phone: String
+  secondContactName: String
+  secondContactPhone: String
+  status: FamilyStatusType
+  billingMode: FamilyBillingModeType
+  monthlyFeeCents: Int
+  address: String
+  timezone: String
+  howTheyFoundMe: String
+  privateNotes: String
+  user: User
+  inviteTokenHash: String
+  calendarTokenHash: String
+  students(where: StudentWhereInput! = {}, orderBy: [StudentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: StudentWhereUniqueInput): [Student!]
+  studentsCount(where: StudentWhereInput! = {}): Int
+  sessions(where: SessionWhereInput! = {}, orderBy: [SessionOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionWhereUniqueInput): [Session!]
+  sessionsCount(where: SessionWhereInput! = {}): Int
+  series(where: RecurringSeriesWhereInput! = {}, orderBy: [RecurringSeriesOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: RecurringSeriesWhereUniqueInput): [RecurringSeries!]
+  seriesCount(where: RecurringSeriesWhereInput! = {}): Int
+  purchases(where: PackagePurchaseWhereInput! = {}, orderBy: [PackagePurchaseOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PackagePurchaseWhereUniqueInput): [PackagePurchase!]
+  purchasesCount(where: PackagePurchaseWhereInput! = {}): Int
+  invoices(where: InvoiceWhereInput! = {}, orderBy: [InvoiceOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: InvoiceWhereUniqueInput): [Invoice!]
+  invoicesCount(where: InvoiceWhereInput! = {}): Int
+  payments(where: PaymentWhereInput! = {}, orderBy: [PaymentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentWhereUniqueInput): [Payment!]
+  paymentsCount(where: PaymentWhereInput! = {}): Int
+  reviews(where: ReviewWhereInput! = {}, orderBy: [ReviewOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ReviewWhereUniqueInput): [Review!]
+  reviewsCount(where: ReviewWhereInput! = {}): Int
+  inquiries(where: InquiryWhereInput! = {}, orderBy: [InquiryOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: InquiryWhereUniqueInput): [Inquiry!]
+  inquiriesCount(where: InquiryWhereInput! = {}): Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum FamilyStatusType {
+  lead
+  active
+  paused
+  former
+  blocked
+}
+
+enum FamilyBillingModeType {
+  pay_as_you_book
+  invoice
+  flat_monthly
+}
+
+input FamilyWhereUniqueInput {
+  id: ID
+  user: UserWhereUniqueInput
+}
+
+input FamilyWhereInput {
+  AND: [FamilyWhereInput!]
+  OR: [FamilyWhereInput!]
+  NOT: [FamilyWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  guardianName: StringFilter
+  email: StringFilter
+  phone: StringFilter
+  secondContactName: StringFilter
+  secondContactPhone: StringFilter
+  status: FamilyStatusTypeNullableFilter
+  billingMode: FamilyBillingModeTypeNullableFilter
+  monthlyFeeCents: IntFilter
+  address: StringFilter
+  timezone: StringFilter
+  howTheyFoundMe: StringFilter
+  privateNotes: StringFilter
+  user: UserWhereInput
+  inviteTokenHash: StringFilter
+  calendarTokenHash: StringFilter
+  students: StudentManyRelationFilter
+  sessions: SessionManyRelationFilter
+  series: RecurringSeriesManyRelationFilter
+  purchases: PackagePurchaseManyRelationFilter
+  invoices: InvoiceManyRelationFilter
+  payments: PaymentManyRelationFilter
+  reviews: ReviewManyRelationFilter
+  inquiries: InquiryManyRelationFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input FamilyStatusTypeNullableFilter {
+  equals: FamilyStatusType
+  in: [FamilyStatusType!]
+  notIn: [FamilyStatusType!]
+  not: FamilyStatusTypeNullableFilter
+}
+
+input FamilyBillingModeTypeNullableFilter {
+  equals: FamilyBillingModeType
+  in: [FamilyBillingModeType!]
+  notIn: [FamilyBillingModeType!]
+  not: FamilyBillingModeTypeNullableFilter
+}
+
+input FamilyOrderByInput {
+  id: OrderDirection
+  guardianName: OrderDirection
+  email: OrderDirection
+  phone: OrderDirection
+  secondContactName: OrderDirection
+  secondContactPhone: OrderDirection
+  status: OrderDirection
+  billingMode: OrderDirection
+  monthlyFeeCents: OrderDirection
+  address: OrderDirection
+  timezone: OrderDirection
+  howTheyFoundMe: OrderDirection
+  privateNotes: OrderDirection
+  inviteTokenHash: OrderDirection
+  calendarTokenHash: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input FamilyUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  guardianName: String
+  email: String
+  phone: String
+  secondContactName: String
+  secondContactPhone: String
+  status: FamilyStatusType
+  billingMode: FamilyBillingModeType
+  monthlyFeeCents: Int
+  address: String
+  timezone: String
+  howTheyFoundMe: String
+  privateNotes: String
+  user: UserRelateToOneForUpdateInput
+  inviteTokenHash: String
+  calendarTokenHash: String
+  students: StudentRelateToManyForUpdateInput
+  sessions: SessionRelateToManyForUpdateInput
+  series: RecurringSeriesRelateToManyForUpdateInput
+  purchases: PackagePurchaseRelateToManyForUpdateInput
+  invoices: InvoiceRelateToManyForUpdateInput
+  payments: PaymentRelateToManyForUpdateInput
+  reviews: ReviewRelateToManyForUpdateInput
+  inquiries: InquiryRelateToManyForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input FamilyUpdateArgs {
+  where: FamilyWhereUniqueInput!
+  data: FamilyUpdateInput!
+}
+
+input FamilyCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  guardianName: String
+  email: String
+  phone: String
+  secondContactName: String
+  secondContactPhone: String
+  status: FamilyStatusType
+  billingMode: FamilyBillingModeType
+  monthlyFeeCents: Int
+  address: String
+  timezone: String
+  howTheyFoundMe: String
+  privateNotes: String
+  user: UserRelateToOneForCreateInput
+  inviteTokenHash: String
+  calendarTokenHash: String
+  students: StudentRelateToManyForCreateInput
+  sessions: SessionRelateToManyForCreateInput
+  series: RecurringSeriesRelateToManyForCreateInput
+  purchases: PackagePurchaseRelateToManyForCreateInput
+  invoices: InvoiceRelateToManyForCreateInput
+  payments: PaymentRelateToManyForCreateInput
+  reviews: ReviewRelateToManyForCreateInput
+  inquiries: InquiryRelateToManyForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type Student {
+  id: ID!
+  profile: TutorProfile
+  family: Family
+  firstName: String
+  lastName: String
+  level: String
+  school: String
+  birthYear: Int
+  goals: String
+  needs: String
+  meetingUrl: String
+  status: StudentStatusType
+  subjects(where: SubjectWhereInput! = {}, orderBy: [SubjectOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SubjectWhereUniqueInput): [Subject!]
+  subjectsCount(where: SubjectWhereInput! = {}): Int
+  sessions(where: SessionWhereInput! = {}, orderBy: [SessionOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionWhereUniqueInput): [Session!]
+  sessionsCount(where: SessionWhereInput! = {}): Int
+  series(where: RecurringSeriesWhereInput! = {}, orderBy: [RecurringSeriesOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: RecurringSeriesWhereUniqueInput): [RecurringSeries!]
+  seriesCount(where: RecurringSeriesWhereInput! = {}): Int
+  homework(where: HomeworkWhereInput! = {}, orderBy: [HomeworkOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: HomeworkWhereUniqueInput): [Homework!]
+  homeworkCount(where: HomeworkWhereInput! = {}): Int
+  marks(where: ProgressMarkWhereInput! = {}, orderBy: [ProgressMarkOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ProgressMarkWhereUniqueInput): [ProgressMark!]
+  marksCount(where: ProgressMarkWhereInput! = {}): Int
+  resources(where: ResourceWhereInput! = {}, orderBy: [ResourceOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ResourceWhereUniqueInput): [Resource!]
+  resourcesCount(where: ResourceWhereInput! = {}): Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum StudentStatusType {
+  active
+  paused
+  finished
+}
+
+input StudentWhereUniqueInput {
+  id: ID
+}
+
+input StudentWhereInput {
+  AND: [StudentWhereInput!]
+  OR: [StudentWhereInput!]
+  NOT: [StudentWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  family: FamilyWhereInput
+  firstName: StringFilter
+  lastName: StringFilter
+  level: StringFilter
+  school: StringFilter
+  birthYear: IntNullableFilter
+  goals: StringFilter
+  needs: StringFilter
+  meetingUrl: StringFilter
+  status: StudentStatusTypeNullableFilter
+  subjects: SubjectManyRelationFilter
+  sessions: SessionManyRelationFilter
+  series: RecurringSeriesManyRelationFilter
+  homework: HomeworkManyRelationFilter
+  marks: ProgressMarkManyRelationFilter
+  resources: ResourceManyRelationFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input StudentStatusTypeNullableFilter {
+  equals: StudentStatusType
+  in: [StudentStatusType!]
+  notIn: [StudentStatusType!]
+  not: StudentStatusTypeNullableFilter
+}
+
+input StudentOrderByInput {
+  id: OrderDirection
+  firstName: OrderDirection
+  lastName: OrderDirection
+  level: OrderDirection
+  school: OrderDirection
+  birthYear: OrderDirection
+  goals: OrderDirection
+  needs: OrderDirection
+  meetingUrl: OrderDirection
+  status: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input StudentUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  family: FamilyRelateToOneForUpdateInput
+  firstName: String
+  lastName: String
+  level: String
+  school: String
+  birthYear: Int
+  goals: String
+  needs: String
+  meetingUrl: String
+  status: StudentStatusType
+  subjects: SubjectRelateToManyForUpdateInput
+  sessions: SessionRelateToManyForUpdateInput
+  series: RecurringSeriesRelateToManyForUpdateInput
+  homework: HomeworkRelateToManyForUpdateInput
+  marks: ProgressMarkRelateToManyForUpdateInput
+  resources: ResourceRelateToManyForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input StudentUpdateArgs {
+  where: StudentWhereUniqueInput!
+  data: StudentUpdateInput!
+}
+
+input StudentCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  family: FamilyRelateToOneForCreateInput
+  firstName: String
+  lastName: String
+  level: String
+  school: String
+  birthYear: Int
+  goals: String
+  needs: String
+  meetingUrl: String
+  status: StudentStatusType
+  subjects: SubjectRelateToManyForCreateInput
+  sessions: SessionRelateToManyForCreateInput
+  series: RecurringSeriesRelateToManyForCreateInput
+  homework: HomeworkRelateToManyForCreateInput
+  marks: ProgressMarkRelateToManyForCreateInput
+  resources: ResourceRelateToManyForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type Inquiry {
+  id: ID!
+  profile: TutorProfile
+  name: String
+  email: String
+  phone: String
+  studentLevel: String
+  subject: String
+  message: String
+  status: InquiryStatusType
+  family: Family
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum InquiryStatusType {
+  new
+  contacted
+  converted
+  closed
+}
+
+input InquiryWhereUniqueInput {
+  id: ID
+}
+
+input InquiryWhereInput {
+  AND: [InquiryWhereInput!]
+  OR: [InquiryWhereInput!]
+  NOT: [InquiryWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  name: StringFilter
+  email: StringFilter
+  phone: StringFilter
+  studentLevel: StringFilter
+  subject: StringFilter
+  message: StringFilter
+  status: InquiryStatusTypeNullableFilter
+  family: FamilyWhereInput
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input InquiryStatusTypeNullableFilter {
+  equals: InquiryStatusType
+  in: [InquiryStatusType!]
+  notIn: [InquiryStatusType!]
+  not: InquiryStatusTypeNullableFilter
+}
+
+input InquiryOrderByInput {
+  id: OrderDirection
+  name: OrderDirection
+  email: OrderDirection
+  phone: OrderDirection
+  studentLevel: OrderDirection
+  subject: OrderDirection
+  message: OrderDirection
+  status: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input InquiryUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  name: String
+  email: String
+  phone: String
+  studentLevel: String
+  subject: String
+  message: String
+  status: InquiryStatusType
+  family: FamilyRelateToOneForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input InquiryUpdateArgs {
+  where: InquiryWhereUniqueInput!
+  data: InquiryUpdateInput!
+}
+
+input InquiryCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  name: String
+  email: String
+  phone: String
+  studentLevel: String
+  subject: String
+  message: String
+  status: InquiryStatusType
+  family: FamilyRelateToOneForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type Review {
+  id: ID!
+  profile: TutorProfile
+  family: Family
+  displayName: String
+  rating: Int
+  body: String
+  status: ReviewStatusType
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum ReviewStatusType {
+  pending
+  published
+  hidden
+}
+
+input ReviewWhereUniqueInput {
+  id: ID
+}
+
+input ReviewWhereInput {
+  AND: [ReviewWhereInput!]
+  OR: [ReviewWhereInput!]
+  NOT: [ReviewWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  family: FamilyWhereInput
+  displayName: StringFilter
+  rating: IntFilter
+  body: StringFilter
+  status: ReviewStatusTypeNullableFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input ReviewStatusTypeNullableFilter {
+  equals: ReviewStatusType
+  in: [ReviewStatusType!]
+  notIn: [ReviewStatusType!]
+  not: ReviewStatusTypeNullableFilter
+}
+
+input ReviewOrderByInput {
+  id: OrderDirection
+  displayName: OrderDirection
+  rating: OrderDirection
+  body: OrderDirection
+  status: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input ReviewUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  family: FamilyRelateToOneForUpdateInput
+  displayName: String
+  rating: Int
+  body: String
+  status: ReviewStatusType
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input ReviewUpdateArgs {
+  where: ReviewWhereUniqueInput!
+  data: ReviewUpdateInput!
+}
+
+input ReviewCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  family: FamilyRelateToOneForCreateInput
+  displayName: String
+  rating: Int
+  body: String
+  status: ReviewStatusType
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type Session {
+  id: ID!
+  profile: TutorProfile
+  family: Family
+  students(where: StudentWhereInput! = {}, orderBy: [StudentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: StudentWhereUniqueInput): [Student!]
+  studentsCount(where: StudentWhereInput! = {}): Int
+  sessionType: SessionType
+  series: RecurringSeries
+  startsAt: DateTime
+  endsAt: DateTime
+  mode: SessionModeType
+  meetingUrl: String
+  locationText: String
+  status: SessionStatusType
+  funding: SessionFundingType
+  source: SessionSourceType
+  typeNameSnapshot: String
+  priceCents: Int
+  chargedCents: Int
+  chargedMinutes: Int
+  billable: SessionBillableType
+  paymentStatus: SessionPaymentStatusType
+  holdEndsAt: DateTime
+  guardianMessage: String
+  cancellationReason: String
+  cancelledBy: SessionCancelledByType
+  cancelledAt: DateTime
+  completedAt: DateTime
+  rescheduleCount: Int
+  rescheduledFrom: DateTime
+  reminderSentAt: DateTime
+  publicAccessTokenHash: String
+  note: SessionNote
+  homework(where: HomeworkWhereInput! = {}, orderBy: [HomeworkOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: HomeworkWhereUniqueInput): [Homework!]
+  homeworkCount(where: HomeworkWhereInput! = {}): Int
+  creditEntries(where: CreditEntryWhereInput! = {}, orderBy: [CreditEntryOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: CreditEntryWhereUniqueInput): [CreditEntry!]
+  creditEntriesCount(where: CreditEntryWhereInput! = {}): Int
+  payments(where: PaymentWhereInput! = {}, orderBy: [PaymentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentWhereUniqueInput): [Payment!]
+  paymentsCount(where: PaymentWhereInput! = {}): Int
+  paymentSessions(where: PaymentSessionWhereInput! = {}, orderBy: [PaymentSessionOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentSessionWhereUniqueInput): [PaymentSession!]
+  paymentSessionsCount(where: PaymentSessionWhereInput! = {}): Int
+  invoiceLines(where: InvoiceLineWhereInput! = {}, orderBy: [InvoiceLineOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: InvoiceLineWhereUniqueInput): [InvoiceLine!]
+  invoiceLinesCount(where: InvoiceLineWhereInput! = {}): Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum SessionModeType {
+  online
+  in_person
+}
+
+enum SessionStatusType {
+  pending_payment
+  scheduled
+  completed
+  cancelled
+  late_cancelled
+  no_show
+  excused
+  released
+}
+
+enum SessionFundingType {
+  package
+  card
+  invoice
+  flat
+  free
+}
+
+enum SessionSourceType {
+  online
+  tutor
+  series
+}
+
+enum SessionBillableType {
+  no
+  yes
+}
+
+enum SessionPaymentStatusType {
+  not_due
+  unpaid
+  paid
+  refunded
+  part_refunded
+}
+
+enum SessionCancelledByType {
+  none
+  guardian
+  tutor
+  system
+}
+
+input SessionWhereUniqueInput {
+  id: ID
+  note: SessionNoteWhereUniqueInput
+}
+
+input SessionWhereInput {
+  AND: [SessionWhereInput!]
+  OR: [SessionWhereInput!]
+  NOT: [SessionWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  family: FamilyWhereInput
+  students: StudentManyRelationFilter
+  sessionType: SessionTypeWhereInput
+  series: RecurringSeriesWhereInput
+  startsAt: DateTimeFilter
+  endsAt: DateTimeFilter
+  mode: SessionModeTypeNullableFilter
+  meetingUrl: StringFilter
+  locationText: StringFilter
+  status: SessionStatusTypeNullableFilter
+  funding: SessionFundingTypeNullableFilter
+  source: SessionSourceTypeNullableFilter
+  typeNameSnapshot: StringFilter
+  priceCents: IntFilter
+  chargedCents: IntFilter
+  chargedMinutes: IntFilter
+  billable: SessionBillableTypeNullableFilter
+  paymentStatus: SessionPaymentStatusTypeNullableFilter
+  holdEndsAt: DateTimeFilter
+  guardianMessage: StringFilter
+  cancellationReason: StringFilter
+  cancelledBy: SessionCancelledByTypeNullableFilter
+  cancelledAt: DateTimeFilter
+  completedAt: DateTimeFilter
+  rescheduleCount: IntFilter
+  rescheduledFrom: DateTimeFilter
+  reminderSentAt: DateTimeFilter
+  publicAccessTokenHash: StringFilter
+  note: SessionNoteWhereInput
+  homework: HomeworkManyRelationFilter
+  creditEntries: CreditEntryManyRelationFilter
+  payments: PaymentManyRelationFilter
+  paymentSessions: PaymentSessionManyRelationFilter
+  invoiceLines: InvoiceLineManyRelationFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input SessionModeTypeNullableFilter {
+  equals: SessionModeType
+  in: [SessionModeType!]
+  notIn: [SessionModeType!]
+  not: SessionModeTypeNullableFilter
+}
+
+input SessionStatusTypeNullableFilter {
+  equals: SessionStatusType
+  in: [SessionStatusType!]
+  notIn: [SessionStatusType!]
+  not: SessionStatusTypeNullableFilter
+}
+
+input SessionFundingTypeNullableFilter {
+  equals: SessionFundingType
+  in: [SessionFundingType!]
+  notIn: [SessionFundingType!]
+  not: SessionFundingTypeNullableFilter
+}
+
+input SessionSourceTypeNullableFilter {
+  equals: SessionSourceType
+  in: [SessionSourceType!]
+  notIn: [SessionSourceType!]
+  not: SessionSourceTypeNullableFilter
+}
+
+input SessionBillableTypeNullableFilter {
+  equals: SessionBillableType
+  in: [SessionBillableType!]
+  notIn: [SessionBillableType!]
+  not: SessionBillableTypeNullableFilter
+}
+
+input SessionPaymentStatusTypeNullableFilter {
+  equals: SessionPaymentStatusType
+  in: [SessionPaymentStatusType!]
+  notIn: [SessionPaymentStatusType!]
+  not: SessionPaymentStatusTypeNullableFilter
+}
+
+input SessionCancelledByTypeNullableFilter {
+  equals: SessionCancelledByType
+  in: [SessionCancelledByType!]
+  notIn: [SessionCancelledByType!]
+  not: SessionCancelledByTypeNullableFilter
+}
+
+input SessionOrderByInput {
+  id: OrderDirection
+  startsAt: OrderDirection
+  endsAt: OrderDirection
+  mode: OrderDirection
+  meetingUrl: OrderDirection
+  locationText: OrderDirection
+  status: OrderDirection
+  funding: OrderDirection
+  source: OrderDirection
+  typeNameSnapshot: OrderDirection
+  priceCents: OrderDirection
+  chargedCents: OrderDirection
+  chargedMinutes: OrderDirection
+  billable: OrderDirection
+  paymentStatus: OrderDirection
+  holdEndsAt: OrderDirection
+  guardianMessage: OrderDirection
+  cancellationReason: OrderDirection
+  cancelledBy: OrderDirection
+  cancelledAt: OrderDirection
+  completedAt: OrderDirection
+  rescheduleCount: OrderDirection
+  rescheduledFrom: OrderDirection
+  reminderSentAt: OrderDirection
+  publicAccessTokenHash: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input SessionUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  family: FamilyRelateToOneForUpdateInput
+  students: StudentRelateToManyForUpdateInput
+  sessionType: SessionTypeRelateToOneForUpdateInput
+  series: RecurringSeriesRelateToOneForUpdateInput
+  startsAt: DateTime
+  endsAt: DateTime
+  mode: SessionModeType
+  meetingUrl: String
+  locationText: String
+  status: SessionStatusType
+  funding: SessionFundingType
+  source: SessionSourceType
+  typeNameSnapshot: String
+  priceCents: Int
+  chargedCents: Int
+  chargedMinutes: Int
+  billable: SessionBillableType
+  paymentStatus: SessionPaymentStatusType
+  holdEndsAt: DateTime
+  guardianMessage: String
+  cancellationReason: String
+  cancelledBy: SessionCancelledByType
+  cancelledAt: DateTime
+  completedAt: DateTime
+  rescheduleCount: Int
+  rescheduledFrom: DateTime
+  reminderSentAt: DateTime
+  publicAccessTokenHash: String
+  note: SessionNoteRelateToOneForUpdateInput
+  homework: HomeworkRelateToManyForUpdateInput
+  creditEntries: CreditEntryRelateToManyForUpdateInput
+  payments: PaymentRelateToManyForUpdateInput
+  paymentSessions: PaymentSessionRelateToManyForUpdateInput
+  invoiceLines: InvoiceLineRelateToManyForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input SessionTypeRelateToOneForUpdateInput {
+  create: SessionTypeCreateInput
+  connect: SessionTypeWhereUniqueInput
+  disconnect: Boolean
+}
+
+input RecurringSeriesRelateToOneForUpdateInput {
+  create: RecurringSeriesCreateInput
+  connect: RecurringSeriesWhereUniqueInput
+  disconnect: Boolean
+}
+
+input SessionNoteRelateToOneForUpdateInput {
+  create: SessionNoteCreateInput
+  connect: SessionNoteWhereUniqueInput
+  disconnect: Boolean
+}
+
+input SessionUpdateArgs {
+  where: SessionWhereUniqueInput!
+  data: SessionUpdateInput!
+}
+
+input SessionCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  family: FamilyRelateToOneForCreateInput
+  students: StudentRelateToManyForCreateInput
+  sessionType: SessionTypeRelateToOneForCreateInput
+  series: RecurringSeriesRelateToOneForCreateInput
+  startsAt: DateTime
+  endsAt: DateTime
+  mode: SessionModeType
+  meetingUrl: String
+  locationText: String
+  status: SessionStatusType
+  funding: SessionFundingType
+  source: SessionSourceType
+  typeNameSnapshot: String
+  priceCents: Int
+  chargedCents: Int
+  chargedMinutes: Int
+  billable: SessionBillableType
+  paymentStatus: SessionPaymentStatusType
+  holdEndsAt: DateTime
+  guardianMessage: String
+  cancellationReason: String
+  cancelledBy: SessionCancelledByType
+  cancelledAt: DateTime
+  completedAt: DateTime
+  rescheduleCount: Int
+  rescheduledFrom: DateTime
+  reminderSentAt: DateTime
+  publicAccessTokenHash: String
+  note: SessionNoteRelateToOneForCreateInput
+  homework: HomeworkRelateToManyForCreateInput
+  creditEntries: CreditEntryRelateToManyForCreateInput
+  payments: PaymentRelateToManyForCreateInput
+  paymentSessions: PaymentSessionRelateToManyForCreateInput
+  invoiceLines: InvoiceLineRelateToManyForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input SessionTypeRelateToOneForCreateInput {
+  create: SessionTypeCreateInput
+  connect: SessionTypeWhereUniqueInput
+}
+
+input RecurringSeriesRelateToOneForCreateInput {
+  create: RecurringSeriesCreateInput
+  connect: RecurringSeriesWhereUniqueInput
+}
+
+input SessionNoteRelateToOneForCreateInput {
+  create: SessionNoteCreateInput
+  connect: SessionNoteWhereUniqueInput
+}
+
+type SessionNote {
+  id: ID!
+  profile: TutorProfile
+  session: Session
+  covered: String
+  wentWell: String
+  workOnNext: String
+  effort: Int
+  privateNote: String
+  sharedAt: DateTime
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input SessionNoteWhereUniqueInput {
+  id: ID
+  session: SessionWhereUniqueInput
+}
+
+input SessionNoteWhereInput {
+  AND: [SessionNoteWhereInput!]
+  OR: [SessionNoteWhereInput!]
+  NOT: [SessionNoteWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  session: SessionWhereInput
+  covered: StringFilter
+  wentWell: StringFilter
+  workOnNext: StringFilter
+  effort: IntNullableFilter
+  privateNote: StringFilter
+  sharedAt: DateTimeFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input SessionNoteOrderByInput {
+  id: OrderDirection
+  covered: OrderDirection
+  wentWell: OrderDirection
+  workOnNext: OrderDirection
+  effort: OrderDirection
+  privateNote: OrderDirection
+  sharedAt: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input SessionNoteUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  session: SessionRelateToOneForUpdateInput
+  covered: String
+  wentWell: String
+  workOnNext: String
+  effort: Int
+  privateNote: String
+  sharedAt: DateTime
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input SessionRelateToOneForUpdateInput {
+  create: SessionCreateInput
+  connect: SessionWhereUniqueInput
+  disconnect: Boolean
+}
+
+input SessionNoteUpdateArgs {
+  where: SessionNoteWhereUniqueInput!
+  data: SessionNoteUpdateInput!
+}
+
+input SessionNoteCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  session: SessionRelateToOneForCreateInput
+  covered: String
+  wentWell: String
+  workOnNext: String
+  effort: Int
+  privateNote: String
+  sharedAt: DateTime
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input SessionRelateToOneForCreateInput {
+  create: SessionCreateInput
+  connect: SessionWhereUniqueInput
+}
+
+type Homework {
+  id: ID!
+  profile: TutorProfile
+  student: Student
+  session: Session
+  title: String
+  instructions: String
+  dueAt: DateTime
+  linkUrl: String
+  file: FileFieldOutput
+  status: HomeworkStatusType
+  handedInAt: DateTime
+  guardianComment: String
+  handInUrl: String
+  feedback: String
+  reviewedAt: DateTime
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type FileFieldOutput {
+  filename: String!
+  filesize: Int!
+  url: String!
+}
+
+enum HomeworkStatusType {
+  assigned
+  handed_in
+  reviewed
+}
+
+input HomeworkWhereUniqueInput {
+  id: ID
+}
+
+input HomeworkWhereInput {
+  AND: [HomeworkWhereInput!]
+  OR: [HomeworkWhereInput!]
+  NOT: [HomeworkWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  student: StudentWhereInput
+  session: SessionWhereInput
+  title: StringFilter
+  instructions: StringFilter
+  dueAt: DateTimeNullableFilter
+  linkUrl: StringFilter
+  status: HomeworkStatusTypeNullableFilter
+  handedInAt: DateTimeFilter
+  guardianComment: StringFilter
+  handInUrl: StringFilter
+  feedback: StringFilter
+  reviewedAt: DateTimeFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input HomeworkStatusTypeNullableFilter {
+  equals: HomeworkStatusType
+  in: [HomeworkStatusType!]
+  notIn: [HomeworkStatusType!]
+  not: HomeworkStatusTypeNullableFilter
+}
+
+input HomeworkOrderByInput {
+  id: OrderDirection
+  title: OrderDirection
+  instructions: OrderDirection
+  dueAt: OrderDirection
+  linkUrl: OrderDirection
+  status: OrderDirection
+  handedInAt: OrderDirection
+  guardianComment: OrderDirection
+  handInUrl: OrderDirection
+  feedback: OrderDirection
+  reviewedAt: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input HomeworkUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  student: StudentRelateToOneForUpdateInput
+  session: SessionRelateToOneForUpdateInput
+  title: String
+  instructions: String
+  dueAt: DateTime
+  linkUrl: String
+  file: FileFieldInput
+  status: HomeworkStatusType
+  handedInAt: DateTime
+  guardianComment: String
+  handInUrl: String
+  feedback: String
+  reviewedAt: DateTime
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input StudentRelateToOneForUpdateInput {
+  create: StudentCreateInput
+  connect: StudentWhereUniqueInput
+  disconnect: Boolean
+}
+
+input FileFieldInput {
+  upload: Upload!
+}
+
+"""The `Upload` scalar type represents a file upload."""
+scalar Upload
+
+input HomeworkUpdateArgs {
+  where: HomeworkWhereUniqueInput!
+  data: HomeworkUpdateInput!
+}
+
+input HomeworkCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  student: StudentRelateToOneForCreateInput
+  session: SessionRelateToOneForCreateInput
+  title: String
+  instructions: String
+  dueAt: DateTime
+  linkUrl: String
+  file: FileFieldInput
+  status: HomeworkStatusType
+  handedInAt: DateTime
+  guardianComment: String
+  handInUrl: String
+  feedback: String
+  reviewedAt: DateTime
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input StudentRelateToOneForCreateInput {
+  create: StudentCreateInput
+  connect: StudentWhereUniqueInput
+}
+
+type ProgressMark {
+  id: ID!
+  profile: TutorProfile
+  student: Student
+  label: String
+  takenOn: DateTime
+  score: Int
+  outOf: Int
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input ProgressMarkWhereUniqueInput {
+  id: ID
+}
+
+input ProgressMarkWhereInput {
+  AND: [ProgressMarkWhereInput!]
+  OR: [ProgressMarkWhereInput!]
+  NOT: [ProgressMarkWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  student: StudentWhereInput
+  label: StringFilter
+  takenOn: DateTimeFilter
+  score: IntFilter
+  outOf: IntFilter
+  note: StringFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input ProgressMarkOrderByInput {
+  id: OrderDirection
+  label: OrderDirection
+  takenOn: OrderDirection
+  score: OrderDirection
+  outOf: OrderDirection
+  note: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input ProgressMarkUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  student: StudentRelateToOneForUpdateInput
+  label: String
+  takenOn: DateTime
+  score: Int
+  outOf: Int
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input ProgressMarkUpdateArgs {
+  where: ProgressMarkWhereUniqueInput!
+  data: ProgressMarkUpdateInput!
+}
+
+input ProgressMarkCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  student: StudentRelateToOneForCreateInput
+  label: String
+  takenOn: DateTime
+  score: Int
+  outOf: Int
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type Resource {
+  id: ID!
+  profile: TutorProfile
+  title: String
+  linkUrl: String
+  file: FileFieldOutput
+  students(where: StudentWhereInput! = {}, orderBy: [StudentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: StudentWhereUniqueInput): [Student!]
+  studentsCount(where: StudentWhereInput! = {}): Int
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input ResourceWhereUniqueInput {
+  id: ID
+}
+
+input ResourceWhereInput {
+  AND: [ResourceWhereInput!]
+  OR: [ResourceWhereInput!]
+  NOT: [ResourceWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  title: StringFilter
+  linkUrl: StringFilter
+  students: StudentManyRelationFilter
+  note: StringFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input ResourceOrderByInput {
+  id: OrderDirection
+  title: OrderDirection
+  linkUrl: OrderDirection
+  note: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input ResourceUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  title: String
+  linkUrl: String
+  file: FileFieldInput
+  students: StudentRelateToManyForUpdateInput
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input ResourceUpdateArgs {
+  where: ResourceWhereUniqueInput!
+  data: ResourceUpdateInput!
+}
+
+input ResourceCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  title: String
+  linkUrl: String
+  file: FileFieldInput
+  students: StudentRelateToManyForCreateInput
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type RecurringSeries {
+  id: ID!
+  profile: TutorProfile
+  family: Family
+  students(where: StudentWhereInput! = {}, orderBy: [StudentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: StudentWhereUniqueInput): [Student!]
+  studentsCount(where: StudentWhereInput! = {}): Int
+  sessionType: SessionType
+  dayOfWeek: Int
+  startMinute: Int
+  mode: RecurringSeriesModeType
+  startsOn: String
+  endsOn: String
+  status: RecurringSeriesStatusType
+  generatedThrough: String
+  skippedDates: String
+  sessions(where: SessionWhereInput! = {}, orderBy: [SessionOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionWhereUniqueInput): [Session!]
+  sessionsCount(where: SessionWhereInput! = {}): Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum RecurringSeriesModeType {
+  online
+  in_person
+}
+
+enum RecurringSeriesStatusType {
+  active
+  paused
+  ended
+}
+
+input RecurringSeriesWhereUniqueInput {
+  id: ID
+}
+
+input RecurringSeriesWhereInput {
+  AND: [RecurringSeriesWhereInput!]
+  OR: [RecurringSeriesWhereInput!]
+  NOT: [RecurringSeriesWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  family: FamilyWhereInput
+  students: StudentManyRelationFilter
+  sessionType: SessionTypeWhereInput
+  dayOfWeek: IntFilter
+  startMinute: IntFilter
+  mode: RecurringSeriesModeTypeNullableFilter
+  startsOn: StringFilter
+  endsOn: StringFilter
+  status: RecurringSeriesStatusTypeNullableFilter
+  generatedThrough: StringFilter
+  skippedDates: StringFilter
+  sessions: SessionManyRelationFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input RecurringSeriesModeTypeNullableFilter {
+  equals: RecurringSeriesModeType
+  in: [RecurringSeriesModeType!]
+  notIn: [RecurringSeriesModeType!]
+  not: RecurringSeriesModeTypeNullableFilter
+}
+
+input RecurringSeriesStatusTypeNullableFilter {
+  equals: RecurringSeriesStatusType
+  in: [RecurringSeriesStatusType!]
+  notIn: [RecurringSeriesStatusType!]
+  not: RecurringSeriesStatusTypeNullableFilter
+}
+
+input RecurringSeriesOrderByInput {
+  id: OrderDirection
+  dayOfWeek: OrderDirection
+  startMinute: OrderDirection
+  mode: OrderDirection
+  startsOn: OrderDirection
+  endsOn: OrderDirection
+  status: OrderDirection
+  generatedThrough: OrderDirection
+  skippedDates: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input RecurringSeriesUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  family: FamilyRelateToOneForUpdateInput
+  students: StudentRelateToManyForUpdateInput
+  sessionType: SessionTypeRelateToOneForUpdateInput
+  dayOfWeek: Int
+  startMinute: Int
+  mode: RecurringSeriesModeType
+  startsOn: String
+  endsOn: String
+  status: RecurringSeriesStatusType
+  generatedThrough: String
+  skippedDates: String
+  sessions: SessionRelateToManyForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input RecurringSeriesUpdateArgs {
+  where: RecurringSeriesWhereUniqueInput!
+  data: RecurringSeriesUpdateInput!
+}
+
+input RecurringSeriesCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  family: FamilyRelateToOneForCreateInput
+  students: StudentRelateToManyForCreateInput
+  sessionType: SessionTypeRelateToOneForCreateInput
+  dayOfWeek: Int
+  startMinute: Int
+  mode: RecurringSeriesModeType
+  startsOn: String
+  endsOn: String
+  status: RecurringSeriesStatusType
+  generatedThrough: String
+  skippedDates: String
+  sessions: SessionRelateToManyForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type PackagePurchase {
+  id: ID!
+  profile: TutorProfile
+  family: Family
+  package: Package
+  nameSnapshot: String
+  appliesToIds: String
+  minutesGranted: Int
+  minutesRemaining: Int
+  pricePaidCents: Int
+  refundedCents: Int
+  status: PackagePurchaseStatusType
+  purchasedAt: DateTime
+  expiresAt: DateTime
+  entries(where: CreditEntryWhereInput! = {}, orderBy: [CreditEntryOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: CreditEntryWhereUniqueInput): [CreditEntry!]
+  entriesCount(where: CreditEntryWhereInput! = {}): Int
+  payments(where: PaymentWhereInput! = {}, orderBy: [PaymentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentWhereUniqueInput): [Payment!]
+  paymentsCount(where: PaymentWhereInput! = {}): Int
+  paymentSessions(where: PaymentSessionWhereInput! = {}, orderBy: [PaymentSessionOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentSessionWhereUniqueInput): [PaymentSession!]
+  paymentSessionsCount(where: PaymentSessionWhereInput! = {}): Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum PackagePurchaseStatusType {
+  awaiting_payment
+  active
+  used_up
+  expired
+  refunded
+  cancelled
+}
+
+input PackagePurchaseWhereUniqueInput {
+  id: ID
+}
+
+input PackagePurchaseWhereInput {
+  AND: [PackagePurchaseWhereInput!]
+  OR: [PackagePurchaseWhereInput!]
+  NOT: [PackagePurchaseWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  family: FamilyWhereInput
+  package: PackageWhereInput
+  nameSnapshot: StringFilter
+  appliesToIds: StringFilter
+  minutesGranted: IntFilter
+  minutesRemaining: IntFilter
+  pricePaidCents: IntFilter
+  refundedCents: IntFilter
+  status: PackagePurchaseStatusTypeNullableFilter
+  purchasedAt: DateTimeFilter
+  expiresAt: DateTimeFilter
+  entries: CreditEntryManyRelationFilter
+  payments: PaymentManyRelationFilter
+  paymentSessions: PaymentSessionManyRelationFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input PackagePurchaseStatusTypeNullableFilter {
+  equals: PackagePurchaseStatusType
+  in: [PackagePurchaseStatusType!]
+  notIn: [PackagePurchaseStatusType!]
+  not: PackagePurchaseStatusTypeNullableFilter
+}
+
+input PackagePurchaseOrderByInput {
+  id: OrderDirection
+  nameSnapshot: OrderDirection
+  appliesToIds: OrderDirection
+  minutesGranted: OrderDirection
+  minutesRemaining: OrderDirection
+  pricePaidCents: OrderDirection
+  refundedCents: OrderDirection
+  status: OrderDirection
+  purchasedAt: OrderDirection
+  expiresAt: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input PackagePurchaseUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  family: FamilyRelateToOneForUpdateInput
+  package: PackageRelateToOneForUpdateInput
+  nameSnapshot: String
+  appliesToIds: String
+  minutesGranted: Int
+  minutesRemaining: Int
+  pricePaidCents: Int
+  refundedCents: Int
+  status: PackagePurchaseStatusType
+  purchasedAt: DateTime
+  expiresAt: DateTime
+  entries: CreditEntryRelateToManyForUpdateInput
+  payments: PaymentRelateToManyForUpdateInput
+  paymentSessions: PaymentSessionRelateToManyForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PackageRelateToOneForUpdateInput {
+  create: PackageCreateInput
+  connect: PackageWhereUniqueInput
+  disconnect: Boolean
+}
+
+input PackagePurchaseUpdateArgs {
+  where: PackagePurchaseWhereUniqueInput!
+  data: PackagePurchaseUpdateInput!
+}
+
+input PackagePurchaseCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  family: FamilyRelateToOneForCreateInput
+  package: PackageRelateToOneForCreateInput
+  nameSnapshot: String
+  appliesToIds: String
+  minutesGranted: Int
+  minutesRemaining: Int
+  pricePaidCents: Int
+  refundedCents: Int
+  status: PackagePurchaseStatusType
+  purchasedAt: DateTime
+  expiresAt: DateTime
+  entries: CreditEntryRelateToManyForCreateInput
+  payments: PaymentRelateToManyForCreateInput
+  paymentSessions: PaymentSessionRelateToManyForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PackageRelateToOneForCreateInput {
+  create: PackageCreateInput
+  connect: PackageWhereUniqueInput
+}
+
+type CreditEntry {
+  id: ID!
+  profile: TutorProfile
+  purchase: PackagePurchase
+  session: Session
+  kind: CreditEntryKindType
+  minutes: Int
+  note: String
+  key: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum CreditEntryKindType {
+  grant
+  hold
+  release
+  debit
+  reversal
+  expire
+  refund
+  adjustment
+}
+
+input CreditEntryWhereUniqueInput {
+  id: ID
+  key: String
+}
+
+input CreditEntryWhereInput {
+  AND: [CreditEntryWhereInput!]
+  OR: [CreditEntryWhereInput!]
+  NOT: [CreditEntryWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  purchase: PackagePurchaseWhereInput
+  session: SessionWhereInput
+  kind: CreditEntryKindTypeNullableFilter
+  minutes: IntFilter
+  note: StringFilter
+  key: StringFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input CreditEntryKindTypeNullableFilter {
+  equals: CreditEntryKindType
+  in: [CreditEntryKindType!]
+  notIn: [CreditEntryKindType!]
+  not: CreditEntryKindTypeNullableFilter
+}
+
+input CreditEntryOrderByInput {
+  id: OrderDirection
+  kind: OrderDirection
+  minutes: OrderDirection
+  note: OrderDirection
+  key: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input CreditEntryUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  purchase: PackagePurchaseRelateToOneForUpdateInput
+  session: SessionRelateToOneForUpdateInput
+  kind: CreditEntryKindType
+  minutes: Int
+  note: String
+  key: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PackagePurchaseRelateToOneForUpdateInput {
+  create: PackagePurchaseCreateInput
+  connect: PackagePurchaseWhereUniqueInput
+  disconnect: Boolean
+}
+
+input CreditEntryUpdateArgs {
+  where: CreditEntryWhereUniqueInput!
+  data: CreditEntryUpdateInput!
+}
+
+input CreditEntryCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  purchase: PackagePurchaseRelateToOneForCreateInput
+  session: SessionRelateToOneForCreateInput
+  kind: CreditEntryKindType
+  minutes: Int
+  note: String
+  key: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PackagePurchaseRelateToOneForCreateInput {
+  create: PackagePurchaseCreateInput
+  connect: PackagePurchaseWhereUniqueInput
+}
+
+type Invoice {
+  id: ID!
+  profile: TutorProfile
+  family: Family
+  number: String
+  status: InvoiceStatusType
+  issuedAt: DateTime
+  dueAt: DateTime
+  periodMonth: String
+  subtotalCents: Int
+  totalCents: Int
+  paidCents: Int
+  note: String
+  voidedAt: DateTime
+  lines(where: InvoiceLineWhereInput! = {}, orderBy: [InvoiceLineOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: InvoiceLineWhereUniqueInput): [InvoiceLine!]
+  linesCount(where: InvoiceLineWhereInput! = {}): Int
+  payments(where: PaymentWhereInput! = {}, orderBy: [PaymentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentWhereUniqueInput): [Payment!]
+  paymentsCount(where: PaymentWhereInput! = {}): Int
+  paymentSessions(where: PaymentSessionWhereInput! = {}, orderBy: [PaymentSessionOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentSessionWhereUniqueInput): [PaymentSession!]
+  paymentSessionsCount(where: PaymentSessionWhereInput! = {}): Int
+  publicAccessTokenHash: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum InvoiceStatusType {
+  draft
+  sent
+  paid
+  void
+}
+
+input InvoiceWhereUniqueInput {
+  id: ID
+}
+
+input InvoiceWhereInput {
+  AND: [InvoiceWhereInput!]
+  OR: [InvoiceWhereInput!]
+  NOT: [InvoiceWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  family: FamilyWhereInput
+  number: StringFilter
+  status: InvoiceStatusTypeNullableFilter
+  issuedAt: DateTimeFilter
+  dueAt: DateTimeFilter
+  periodMonth: StringFilter
+  subtotalCents: IntFilter
+  totalCents: IntFilter
+  paidCents: IntFilter
+  note: StringFilter
+  voidedAt: DateTimeFilter
+  lines: InvoiceLineManyRelationFilter
+  payments: PaymentManyRelationFilter
+  paymentSessions: PaymentSessionManyRelationFilter
+  publicAccessTokenHash: StringFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input InvoiceStatusTypeNullableFilter {
+  equals: InvoiceStatusType
+  in: [InvoiceStatusType!]
+  notIn: [InvoiceStatusType!]
+  not: InvoiceStatusTypeNullableFilter
+}
+
+input InvoiceOrderByInput {
+  id: OrderDirection
+  number: OrderDirection
+  status: OrderDirection
+  issuedAt: OrderDirection
+  dueAt: OrderDirection
+  periodMonth: OrderDirection
+  subtotalCents: OrderDirection
+  totalCents: OrderDirection
+  paidCents: OrderDirection
+  note: OrderDirection
+  voidedAt: OrderDirection
+  publicAccessTokenHash: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input InvoiceUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  family: FamilyRelateToOneForUpdateInput
+  number: String
+  status: InvoiceStatusType
+  issuedAt: DateTime
+  dueAt: DateTime
+  periodMonth: String
+  subtotalCents: Int
+  totalCents: Int
+  paidCents: Int
+  note: String
+  voidedAt: DateTime
+  lines: InvoiceLineRelateToManyForUpdateInput
+  payments: PaymentRelateToManyForUpdateInput
+  paymentSessions: PaymentSessionRelateToManyForUpdateInput
+  publicAccessTokenHash: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input InvoiceUpdateArgs {
+  where: InvoiceWhereUniqueInput!
+  data: InvoiceUpdateInput!
+}
+
+input InvoiceCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  family: FamilyRelateToOneForCreateInput
+  number: String
+  status: InvoiceStatusType
+  issuedAt: DateTime
+  dueAt: DateTime
+  periodMonth: String
+  subtotalCents: Int
+  totalCents: Int
+  paidCents: Int
+  note: String
+  voidedAt: DateTime
+  lines: InvoiceLineRelateToManyForCreateInput
+  payments: PaymentRelateToManyForCreateInput
+  paymentSessions: PaymentSessionRelateToManyForCreateInput
+  publicAccessTokenHash: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type InvoiceLine {
+  id: ID!
+  profile: TutorProfile
+  invoice: Invoice
+  session: Session
+  description: String
+  quantity: Int
+  unitCents: Int
+  totalCents: Int
+  sortOrder: Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input InvoiceLineWhereUniqueInput {
+  id: ID
+}
+
+input InvoiceLineWhereInput {
+  AND: [InvoiceLineWhereInput!]
+  OR: [InvoiceLineWhereInput!]
+  NOT: [InvoiceLineWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  invoice: InvoiceWhereInput
+  session: SessionWhereInput
+  description: StringFilter
+  quantity: IntFilter
+  unitCents: IntFilter
+  totalCents: IntFilter
+  sortOrder: IntFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input InvoiceLineOrderByInput {
+  id: OrderDirection
+  description: OrderDirection
+  quantity: OrderDirection
+  unitCents: OrderDirection
+  totalCents: OrderDirection
+  sortOrder: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input InvoiceLineUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  invoice: InvoiceRelateToOneForUpdateInput
+  session: SessionRelateToOneForUpdateInput
+  description: String
+  quantity: Int
+  unitCents: Int
+  totalCents: Int
+  sortOrder: Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input InvoiceRelateToOneForUpdateInput {
+  create: InvoiceCreateInput
+  connect: InvoiceWhereUniqueInput
+  disconnect: Boolean
+}
+
+input InvoiceLineUpdateArgs {
+  where: InvoiceLineWhereUniqueInput!
+  data: InvoiceLineUpdateInput!
+}
+
+input InvoiceLineCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  invoice: InvoiceRelateToOneForCreateInput
+  session: SessionRelateToOneForCreateInput
+  description: String
+  quantity: Int
+  unitCents: Int
+  totalCents: Int
+  sortOrder: Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input InvoiceRelateToOneForCreateInput {
+  create: InvoiceCreateInput
+  connect: InvoiceWhereUniqueInput
+}
+
+type Payment {
+  id: ID!
+  profile: TutorProfile
+  family: Family
+  session: Session
+  purchase: PackagePurchase
+  invoice: Invoice
+  refundOf: Payment
+  refunds(where: PaymentWhereInput! = {}, orderBy: [PaymentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentWhereUniqueInput): [Payment!]
+  refundsCount(where: PaymentWhereInput! = {}): Int
+  kind: PaymentKindType
+  method: PaymentMethodType
+  status: PaymentStatusType
+  amountCents: Int
+  refundedCents: Int
+  refundCount: Int
+  refundPendingCents: Int
+  currencyCode: String
+  reference: String
+  providerReference: String
+  paidAt: DateTime
+  reportedByGuardian: Boolean
+  decidedAt: DateTime
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum PaymentKindType {
+  session
+  package
+  invoice
+  refund
+}
+
+enum PaymentMethodType {
+  stripe
+  cash
+  bank_transfer
+  mobile_money
+  other
+}
+
+enum PaymentStatusType {
+  reported
+  confirmed
+  rejected
+  refunded
+  partially_refunded
+}
+
+input PaymentWhereUniqueInput {
+  id: ID
+}
+
+input PaymentWhereInput {
+  AND: [PaymentWhereInput!]
+  OR: [PaymentWhereInput!]
+  NOT: [PaymentWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  family: FamilyWhereInput
+  session: SessionWhereInput
+  purchase: PackagePurchaseWhereInput
+  invoice: InvoiceWhereInput
+  refundOf: PaymentWhereInput
+  refunds: PaymentManyRelationFilter
+  kind: PaymentKindTypeNullableFilter
+  method: PaymentMethodTypeNullableFilter
+  status: PaymentStatusTypeNullableFilter
+  amountCents: IntFilter
+  refundedCents: IntFilter
+  refundCount: IntFilter
+  refundPendingCents: IntFilter
+  currencyCode: StringFilter
+  reference: StringFilter
+  providerReference: StringFilter
+  paidAt: DateTimeFilter
+  reportedByGuardian: BooleanFilter
+  decidedAt: DateTimeFilter
+  note: StringFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input PaymentKindTypeNullableFilter {
+  equals: PaymentKindType
+  in: [PaymentKindType!]
+  notIn: [PaymentKindType!]
+  not: PaymentKindTypeNullableFilter
+}
+
+input PaymentMethodTypeNullableFilter {
+  equals: PaymentMethodType
+  in: [PaymentMethodType!]
+  notIn: [PaymentMethodType!]
+  not: PaymentMethodTypeNullableFilter
+}
+
+input PaymentStatusTypeNullableFilter {
+  equals: PaymentStatusType
+  in: [PaymentStatusType!]
+  notIn: [PaymentStatusType!]
+  not: PaymentStatusTypeNullableFilter
+}
+
+input PaymentOrderByInput {
+  id: OrderDirection
+  kind: OrderDirection
+  method: OrderDirection
+  status: OrderDirection
+  amountCents: OrderDirection
+  refundedCents: OrderDirection
+  refundCount: OrderDirection
+  refundPendingCents: OrderDirection
+  currencyCode: OrderDirection
+  reference: OrderDirection
+  providerReference: OrderDirection
+  paidAt: OrderDirection
+  reportedByGuardian: OrderDirection
+  decidedAt: OrderDirection
+  note: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input PaymentUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  family: FamilyRelateToOneForUpdateInput
+  session: SessionRelateToOneForUpdateInput
+  purchase: PackagePurchaseRelateToOneForUpdateInput
+  invoice: InvoiceRelateToOneForUpdateInput
+  refundOf: PaymentRelateToOneForUpdateInput
+  refunds: PaymentRelateToManyForUpdateInput
+  kind: PaymentKindType
+  method: PaymentMethodType
+  status: PaymentStatusType
+  amountCents: Int
+  refundedCents: Int
+  refundCount: Int
+  refundPendingCents: Int
+  currencyCode: String
+  reference: String
+  providerReference: String
+  paidAt: DateTime
+  reportedByGuardian: Boolean
+  decidedAt: DateTime
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PaymentRelateToOneForUpdateInput {
+  create: PaymentCreateInput
+  connect: PaymentWhereUniqueInput
+  disconnect: Boolean
+}
+
+input PaymentUpdateArgs {
+  where: PaymentWhereUniqueInput!
+  data: PaymentUpdateInput!
+}
+
+input PaymentCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  family: FamilyRelateToOneForCreateInput
+  session: SessionRelateToOneForCreateInput
+  purchase: PackagePurchaseRelateToOneForCreateInput
+  invoice: InvoiceRelateToOneForCreateInput
+  refundOf: PaymentRelateToOneForCreateInput
+  refunds: PaymentRelateToManyForCreateInput
+  kind: PaymentKindType
+  method: PaymentMethodType
+  status: PaymentStatusType
+  amountCents: Int
+  refundedCents: Int
+  refundCount: Int
+  refundPendingCents: Int
+  currencyCode: String
+  reference: String
+  providerReference: String
+  paidAt: DateTime
+  reportedByGuardian: Boolean
+  decidedAt: DateTime
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PaymentRelateToOneForCreateInput {
+  create: PaymentCreateInput
+  connect: PaymentWhereUniqueInput
+}
+
+type PaymentProvider {
+  id: ID!
+  profile: TutorProfile
+  name: String
+  code: String
+  isInstalled: Boolean
+  createPaymentFunction: String
+  capturePaymentFunction: String
+  refundPaymentFunction: String
+  getPaymentStatusFunction: String
+  generatePaymentLinkFunction: String
+  handleWebhookFunction: String
+  paymentSessions(where: PaymentSessionWhereInput! = {}, orderBy: [PaymentSessionOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentSessionWhereUniqueInput): [PaymentSession!]
+  paymentSessionsCount(where: PaymentSessionWhereInput! = {}): Int
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PaymentProviderWhereUniqueInput {
+  id: ID
+}
+
+input PaymentProviderWhereInput {
+  AND: [PaymentProviderWhereInput!]
+  OR: [PaymentProviderWhereInput!]
+  NOT: [PaymentProviderWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  name: StringFilter
+  code: StringFilter
+  isInstalled: BooleanFilter
+  createPaymentFunction: StringFilter
+  capturePaymentFunction: StringFilter
+  refundPaymentFunction: StringFilter
+  getPaymentStatusFunction: StringFilter
+  generatePaymentLinkFunction: StringFilter
+  handleWebhookFunction: StringFilter
+  paymentSessions: PaymentSessionManyRelationFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input PaymentProviderOrderByInput {
+  id: OrderDirection
+  name: OrderDirection
+  code: OrderDirection
+  isInstalled: OrderDirection
+  createPaymentFunction: OrderDirection
+  capturePaymentFunction: OrderDirection
+  refundPaymentFunction: OrderDirection
+  getPaymentStatusFunction: OrderDirection
+  generatePaymentLinkFunction: OrderDirection
+  handleWebhookFunction: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input PaymentProviderUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  name: String
+  code: String
+  isInstalled: Boolean
+  createPaymentFunction: String
+  capturePaymentFunction: String
+  refundPaymentFunction: String
+  getPaymentStatusFunction: String
+  generatePaymentLinkFunction: String
+  handleWebhookFunction: String
+  paymentSessions: PaymentSessionRelateToManyForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PaymentProviderUpdateArgs {
+  where: PaymentProviderWhereUniqueInput!
+  data: PaymentProviderUpdateInput!
+}
+
+input PaymentProviderCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  name: String
+  code: String
+  isInstalled: Boolean
+  createPaymentFunction: String
+  capturePaymentFunction: String
+  refundPaymentFunction: String
+  getPaymentStatusFunction: String
+  generatePaymentLinkFunction: String
+  handleWebhookFunction: String
+  paymentSessions: PaymentSessionRelateToManyForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type PaymentSession {
+  id: ID!
+  profile: TutorProfile
+  target: PaymentSessionTargetType
+  session: Session
+  purchase: PackagePurchase
+  invoice: Invoice
+  paymentProvider: PaymentProvider
+  status: PaymentSessionStatusType
+  amountCents: Int
+  currencyCode: String
+  providerPaymentId: String
+  expiresAt: DateTime
+  capturedAt: DateTime
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum PaymentSessionTargetType {
+  session
+  package
+  invoice
+}
+
+enum PaymentSessionStatusType {
+  pending
+  captured
+  expired
+  cancelled
+  refunded
+}
+
+input PaymentSessionWhereUniqueInput {
+  id: ID
+}
+
+input PaymentSessionWhereInput {
+  AND: [PaymentSessionWhereInput!]
+  OR: [PaymentSessionWhereInput!]
+  NOT: [PaymentSessionWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  target: PaymentSessionTargetTypeNullableFilter
+  session: SessionWhereInput
+  purchase: PackagePurchaseWhereInput
+  invoice: InvoiceWhereInput
+  paymentProvider: PaymentProviderWhereInput
+  status: PaymentSessionStatusTypeNullableFilter
+  amountCents: IntFilter
+  currencyCode: StringFilter
+  providerPaymentId: StringFilter
+  expiresAt: DateTimeFilter
+  capturedAt: DateTimeFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input PaymentSessionTargetTypeNullableFilter {
+  equals: PaymentSessionTargetType
+  in: [PaymentSessionTargetType!]
+  notIn: [PaymentSessionTargetType!]
+  not: PaymentSessionTargetTypeNullableFilter
+}
+
+input PaymentSessionStatusTypeNullableFilter {
+  equals: PaymentSessionStatusType
+  in: [PaymentSessionStatusType!]
+  notIn: [PaymentSessionStatusType!]
+  not: PaymentSessionStatusTypeNullableFilter
+}
+
+input PaymentSessionOrderByInput {
+  id: OrderDirection
+  target: OrderDirection
+  status: OrderDirection
+  amountCents: OrderDirection
+  currencyCode: OrderDirection
+  providerPaymentId: OrderDirection
+  expiresAt: OrderDirection
+  capturedAt: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input PaymentSessionUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  target: PaymentSessionTargetType
+  session: SessionRelateToOneForUpdateInput
+  purchase: PackagePurchaseRelateToOneForUpdateInput
+  invoice: InvoiceRelateToOneForUpdateInput
+  paymentProvider: PaymentProviderRelateToOneForUpdateInput
+  status: PaymentSessionStatusType
+  amountCents: Int
+  currencyCode: String
+  providerPaymentId: String
+  expiresAt: DateTime
+  capturedAt: DateTime
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PaymentProviderRelateToOneForUpdateInput {
+  create: PaymentProviderCreateInput
+  connect: PaymentProviderWhereUniqueInput
+  disconnect: Boolean
+}
+
+input PaymentSessionUpdateArgs {
+  where: PaymentSessionWhereUniqueInput!
+  data: PaymentSessionUpdateInput!
+}
+
+input PaymentSessionCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  target: PaymentSessionTargetType
+  session: SessionRelateToOneForCreateInput
+  purchase: PackagePurchaseRelateToOneForCreateInput
+  invoice: InvoiceRelateToOneForCreateInput
+  paymentProvider: PaymentProviderRelateToOneForCreateInput
+  status: PaymentSessionStatusType
+  amountCents: Int
+  currencyCode: String
+  providerPaymentId: String
+  expiresAt: DateTime
+  capturedAt: DateTime
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PaymentProviderRelateToOneForCreateInput {
+  create: PaymentProviderCreateInput
+  connect: PaymentProviderWhereUniqueInput
+}
+
+type PaymentWebhookEvent {
+  id: ID!
+  replayKey: String
+  providerCode: String
+  providerEventId: String
+  eventType: String
+  payloadHash: String
+  processedAt: DateTime
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PaymentWebhookEventWhereUniqueInput {
+  id: ID
+  replayKey: String
+}
+
+input PaymentWebhookEventWhereInput {
+  AND: [PaymentWebhookEventWhereInput!]
+  OR: [PaymentWebhookEventWhereInput!]
+  NOT: [PaymentWebhookEventWhereInput!]
+  id: IDFilter
+  replayKey: StringFilter
+  providerCode: StringFilter
+  providerEventId: StringFilter
+  eventType: StringFilter
+  payloadHash: StringFilter
+  processedAt: DateTimeFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input PaymentWebhookEventOrderByInput {
+  id: OrderDirection
+  replayKey: OrderDirection
+  providerCode: OrderDirection
+  providerEventId: OrderDirection
+  eventType: OrderDirection
+  payloadHash: OrderDirection
+  processedAt: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input PaymentWebhookEventUpdateInput {
+  replayKey: String
+  providerCode: String
+  providerEventId: String
+  eventType: String
+  payloadHash: String
+  processedAt: DateTime
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input PaymentWebhookEventUpdateArgs {
+  where: PaymentWebhookEventWhereUniqueInput!
+  data: PaymentWebhookEventUpdateInput!
+}
+
+input PaymentWebhookEventCreateInput {
+  replayKey: String
+  providerCode: String
+  providerEventId: String
+  eventType: String
+  payloadHash: String
+  processedAt: DateTime
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type Expense {
+  id: ID!
+  profile: TutorProfile
+  spentOn: DateTime
+  category: ExpenseCategoryType
+  amountCents: Int
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum ExpenseCategoryType {
+  travel
+  materials
+  software
+  room
+  other
+}
+
+input ExpenseWhereUniqueInput {
+  id: ID
+}
+
+input ExpenseWhereInput {
+  AND: [ExpenseWhereInput!]
+  OR: [ExpenseWhereInput!]
+  NOT: [ExpenseWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  spentOn: DateTimeFilter
+  category: ExpenseCategoryTypeNullableFilter
+  amountCents: IntFilter
+  note: StringFilter
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input ExpenseCategoryTypeNullableFilter {
+  equals: ExpenseCategoryType
+  in: [ExpenseCategoryType!]
+  notIn: [ExpenseCategoryType!]
+  not: ExpenseCategoryTypeNullableFilter
+}
+
+input ExpenseOrderByInput {
+  id: OrderDirection
+  spentOn: OrderDirection
+  category: OrderDirection
+  amountCents: OrderDirection
+  note: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input ExpenseUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  spentOn: DateTime
+  category: ExpenseCategoryType
+  amountCents: Int
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input ExpenseUpdateArgs {
+  where: ExpenseWhereUniqueInput!
+  data: ExpenseUpdateInput!
+}
+
+input ExpenseCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  spentOn: DateTime
+  category: ExpenseCategoryType
+  amountCents: Int
+  note: String
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+type NotificationLog {
+  id: ID!
+  profile: TutorProfile
+  kind: String
+  to: String
+  subject: String
+  link: String
+  status: NotificationLogStatusType
+  error: String
+  session: Session
+  invoice: Invoice
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+enum NotificationLogStatusType {
+  sent
+  failed
+  skipped
+}
+
+input NotificationLogWhereUniqueInput {
+  id: ID
+}
+
+input NotificationLogWhereInput {
+  AND: [NotificationLogWhereInput!]
+  OR: [NotificationLogWhereInput!]
+  NOT: [NotificationLogWhereInput!]
+  id: IDFilter
+  profile: TutorProfileWhereInput
+  kind: StringFilter
+  to: StringFilter
+  subject: StringFilter
+  link: StringFilter
+  status: NotificationLogStatusTypeNullableFilter
+  error: StringFilter
+  session: SessionWhereInput
+  invoice: InvoiceWhereInput
+  createdAt: DateTimeFilter
+  updatedAt: DateTimeFilter
+}
+
+input NotificationLogStatusTypeNullableFilter {
+  equals: NotificationLogStatusType
+  in: [NotificationLogStatusType!]
+  notIn: [NotificationLogStatusType!]
+  not: NotificationLogStatusTypeNullableFilter
+}
+
+input NotificationLogOrderByInput {
+  id: OrderDirection
+  kind: OrderDirection
+  to: OrderDirection
+  subject: OrderDirection
+  link: OrderDirection
+  status: OrderDirection
+  error: OrderDirection
+  createdAt: OrderDirection
+  updatedAt: OrderDirection
+}
+
+input NotificationLogUpdateInput {
+  profile: TutorProfileRelateToOneForUpdateInput
+  kind: String
+  to: String
+  subject: String
+  link: String
+  status: NotificationLogStatusType
+  error: String
+  session: SessionRelateToOneForUpdateInput
+  invoice: InvoiceRelateToOneForUpdateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
+input NotificationLogUpdateArgs {
+  where: NotificationLogWhereUniqueInput!
+  data: NotificationLogUpdateInput!
+}
+
+input NotificationLogCreateInput {
+  profile: TutorProfileRelateToOneForCreateInput
+  kind: String
+  to: String
+  subject: String
+  link: String
+  status: NotificationLogStatusType
+  error: String
+  session: SessionRelateToOneForCreateInput
+  invoice: InvoiceRelateToOneForCreateInput
+  createdAt: DateTime
+  updatedAt: DateTime
+}
+
 """
 The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
 """
@@ -790,18 +4279,6 @@ type Mutation {
   updateRoles(data: [RoleUpdateArgs!]!): [Role]
   deleteRole(where: RoleWhereUniqueInput!): Role
   deleteRoles(where: [RoleWhereUniqueInput!]!): [Role]
-  createTodo(data: TodoCreateInput!): Todo
-  createTodos(data: [TodoCreateInput!]!): [Todo]
-  updateTodo(where: TodoWhereUniqueInput!, data: TodoUpdateInput!): Todo
-  updateTodos(data: [TodoUpdateArgs!]!): [Todo]
-  deleteTodo(where: TodoWhereUniqueInput!): Todo
-  deleteTodos(where: [TodoWhereUniqueInput!]!): [Todo]
-  createTodoImage(data: TodoImageCreateInput!): TodoImage
-  createTodoImages(data: [TodoImageCreateInput!]!): [TodoImage]
-  updateTodoImage(where: TodoImageWhereUniqueInput!, data: TodoImageUpdateInput!): TodoImage
-  updateTodoImages(data: [TodoImageUpdateArgs!]!): [TodoImage]
-  deleteTodoImage(where: TodoImageWhereUniqueInput!): TodoImage
-  deleteTodoImages(where: [TodoImageWhereUniqueInput!]!): [TodoImage]
   createOAuthApp(data: OAuthAppCreateInput!): OAuthApp
   createOAuthApps(data: [OAuthAppCreateInput!]!): [OAuthApp]
   updateOAuthApp(where: OAuthAppWhereUniqueInput!, data: OAuthAppUpdateInput!): OAuthApp
@@ -814,6 +4291,162 @@ type Mutation {
   updateOAuthTokens(data: [OAuthTokenUpdateArgs!]!): [OAuthToken]
   deleteOAuthToken(where: OAuthTokenWhereUniqueInput!): OAuthToken
   deleteOAuthTokens(where: [OAuthTokenWhereUniqueInput!]!): [OAuthToken]
+  createTutorProfile(data: TutorProfileCreateInput!): TutorProfile
+  createTutorProfiles(data: [TutorProfileCreateInput!]!): [TutorProfile]
+  updateTutorProfile(where: TutorProfileWhereUniqueInput!, data: TutorProfileUpdateInput!): TutorProfile
+  updateTutorProfiles(data: [TutorProfileUpdateArgs!]!): [TutorProfile]
+  deleteTutorProfile(where: TutorProfileWhereUniqueInput!): TutorProfile
+  deleteTutorProfiles(where: [TutorProfileWhereUniqueInput!]!): [TutorProfile]
+  createSubject(data: SubjectCreateInput!): Subject
+  createSubjects(data: [SubjectCreateInput!]!): [Subject]
+  updateSubject(where: SubjectWhereUniqueInput!, data: SubjectUpdateInput!): Subject
+  updateSubjects(data: [SubjectUpdateArgs!]!): [Subject]
+  deleteSubject(where: SubjectWhereUniqueInput!): Subject
+  deleteSubjects(where: [SubjectWhereUniqueInput!]!): [Subject]
+  createSessionType(data: SessionTypeCreateInput!): SessionType
+  createSessionTypes(data: [SessionTypeCreateInput!]!): [SessionType]
+  updateSessionType(where: SessionTypeWhereUniqueInput!, data: SessionTypeUpdateInput!): SessionType
+  updateSessionTypes(data: [SessionTypeUpdateArgs!]!): [SessionType]
+  deleteSessionType(where: SessionTypeWhereUniqueInput!): SessionType
+  deleteSessionTypes(where: [SessionTypeWhereUniqueInput!]!): [SessionType]
+  createWeeklyHours(data: WeeklyHoursCreateInput!): WeeklyHours
+  createWeeklyHoursRows(data: [WeeklyHoursCreateInput!]!): [WeeklyHours]
+  updateWeeklyHours(where: WeeklyHoursWhereUniqueInput!, data: WeeklyHoursUpdateInput!): WeeklyHours
+  updateWeeklyHoursRows(data: [WeeklyHoursUpdateArgs!]!): [WeeklyHours]
+  deleteWeeklyHours(where: WeeklyHoursWhereUniqueInput!): WeeklyHours
+  deleteWeeklyHoursRows(where: [WeeklyHoursWhereUniqueInput!]!): [WeeklyHours]
+  createTimeOff(data: TimeOffCreateInput!): TimeOff
+  createTimeOffs(data: [TimeOffCreateInput!]!): [TimeOff]
+  updateTimeOff(where: TimeOffWhereUniqueInput!, data: TimeOffUpdateInput!): TimeOff
+  updateTimeOffs(data: [TimeOffUpdateArgs!]!): [TimeOff]
+  deleteTimeOff(where: TimeOffWhereUniqueInput!): TimeOff
+  deleteTimeOffs(where: [TimeOffWhereUniqueInput!]!): [TimeOff]
+  createPackage(data: PackageCreateInput!): Package
+  createPackages(data: [PackageCreateInput!]!): [Package]
+  updatePackage(where: PackageWhereUniqueInput!, data: PackageUpdateInput!): Package
+  updatePackages(data: [PackageUpdateArgs!]!): [Package]
+  deletePackage(where: PackageWhereUniqueInput!): Package
+  deletePackages(where: [PackageWhereUniqueInput!]!): [Package]
+  createFamily(data: FamilyCreateInput!): Family
+  createFamilies(data: [FamilyCreateInput!]!): [Family]
+  updateFamily(where: FamilyWhereUniqueInput!, data: FamilyUpdateInput!): Family
+  updateFamilies(data: [FamilyUpdateArgs!]!): [Family]
+  deleteFamily(where: FamilyWhereUniqueInput!): Family
+  deleteFamilies(where: [FamilyWhereUniqueInput!]!): [Family]
+  createStudent(data: StudentCreateInput!): Student
+  createStudents(data: [StudentCreateInput!]!): [Student]
+  updateStudent(where: StudentWhereUniqueInput!, data: StudentUpdateInput!): Student
+  updateStudents(data: [StudentUpdateArgs!]!): [Student]
+  deleteStudent(where: StudentWhereUniqueInput!): Student
+  deleteStudents(where: [StudentWhereUniqueInput!]!): [Student]
+  createInquiry(data: InquiryCreateInput!): Inquiry
+  createInquiries(data: [InquiryCreateInput!]!): [Inquiry]
+  updateInquiry(where: InquiryWhereUniqueInput!, data: InquiryUpdateInput!): Inquiry
+  updateInquiries(data: [InquiryUpdateArgs!]!): [Inquiry]
+  deleteInquiry(where: InquiryWhereUniqueInput!): Inquiry
+  deleteInquiries(where: [InquiryWhereUniqueInput!]!): [Inquiry]
+  createReview(data: ReviewCreateInput!): Review
+  createReviews(data: [ReviewCreateInput!]!): [Review]
+  updateReview(where: ReviewWhereUniqueInput!, data: ReviewUpdateInput!): Review
+  updateReviews(data: [ReviewUpdateArgs!]!): [Review]
+  deleteReview(where: ReviewWhereUniqueInput!): Review
+  deleteReviews(where: [ReviewWhereUniqueInput!]!): [Review]
+  createSession(data: SessionCreateInput!): Session
+  createSessions(data: [SessionCreateInput!]!): [Session]
+  updateSession(where: SessionWhereUniqueInput!, data: SessionUpdateInput!): Session
+  updateSessions(data: [SessionUpdateArgs!]!): [Session]
+  deleteSession(where: SessionWhereUniqueInput!): Session
+  deleteSessions(where: [SessionWhereUniqueInput!]!): [Session]
+  createSessionNote(data: SessionNoteCreateInput!): SessionNote
+  createSessionNotes(data: [SessionNoteCreateInput!]!): [SessionNote]
+  updateSessionNote(where: SessionNoteWhereUniqueInput!, data: SessionNoteUpdateInput!): SessionNote
+  updateSessionNotes(data: [SessionNoteUpdateArgs!]!): [SessionNote]
+  deleteSessionNote(where: SessionNoteWhereUniqueInput!): SessionNote
+  deleteSessionNotes(where: [SessionNoteWhereUniqueInput!]!): [SessionNote]
+  createHomework(data: HomeworkCreateInput!): Homework
+  createHomeworkItems(data: [HomeworkCreateInput!]!): [Homework]
+  updateHomework(where: HomeworkWhereUniqueInput!, data: HomeworkUpdateInput!): Homework
+  updateHomeworkItems(data: [HomeworkUpdateArgs!]!): [Homework]
+  deleteHomework(where: HomeworkWhereUniqueInput!): Homework
+  deleteHomeworkItems(where: [HomeworkWhereUniqueInput!]!): [Homework]
+  createProgressMark(data: ProgressMarkCreateInput!): ProgressMark
+  createProgressMarks(data: [ProgressMarkCreateInput!]!): [ProgressMark]
+  updateProgressMark(where: ProgressMarkWhereUniqueInput!, data: ProgressMarkUpdateInput!): ProgressMark
+  updateProgressMarks(data: [ProgressMarkUpdateArgs!]!): [ProgressMark]
+  deleteProgressMark(where: ProgressMarkWhereUniqueInput!): ProgressMark
+  deleteProgressMarks(where: [ProgressMarkWhereUniqueInput!]!): [ProgressMark]
+  createResource(data: ResourceCreateInput!): Resource
+  createResources(data: [ResourceCreateInput!]!): [Resource]
+  updateResource(where: ResourceWhereUniqueInput!, data: ResourceUpdateInput!): Resource
+  updateResources(data: [ResourceUpdateArgs!]!): [Resource]
+  deleteResource(where: ResourceWhereUniqueInput!): Resource
+  deleteResources(where: [ResourceWhereUniqueInput!]!): [Resource]
+  createRecurringSeries(data: RecurringSeriesCreateInput!): RecurringSeries
+  createRecurringSeriesItems(data: [RecurringSeriesCreateInput!]!): [RecurringSeries]
+  updateRecurringSeries(where: RecurringSeriesWhereUniqueInput!, data: RecurringSeriesUpdateInput!): RecurringSeries
+  updateRecurringSeriesItems(data: [RecurringSeriesUpdateArgs!]!): [RecurringSeries]
+  deleteRecurringSeries(where: RecurringSeriesWhereUniqueInput!): RecurringSeries
+  deleteRecurringSeriesItems(where: [RecurringSeriesWhereUniqueInput!]!): [RecurringSeries]
+  createPackagePurchase(data: PackagePurchaseCreateInput!): PackagePurchase
+  createPackagePurchases(data: [PackagePurchaseCreateInput!]!): [PackagePurchase]
+  updatePackagePurchase(where: PackagePurchaseWhereUniqueInput!, data: PackagePurchaseUpdateInput!): PackagePurchase
+  updatePackagePurchases(data: [PackagePurchaseUpdateArgs!]!): [PackagePurchase]
+  deletePackagePurchase(where: PackagePurchaseWhereUniqueInput!): PackagePurchase
+  deletePackagePurchases(where: [PackagePurchaseWhereUniqueInput!]!): [PackagePurchase]
+  createCreditEntry(data: CreditEntryCreateInput!): CreditEntry
+  createCreditEntries(data: [CreditEntryCreateInput!]!): [CreditEntry]
+  updateCreditEntry(where: CreditEntryWhereUniqueInput!, data: CreditEntryUpdateInput!): CreditEntry
+  updateCreditEntries(data: [CreditEntryUpdateArgs!]!): [CreditEntry]
+  deleteCreditEntry(where: CreditEntryWhereUniqueInput!): CreditEntry
+  deleteCreditEntries(where: [CreditEntryWhereUniqueInput!]!): [CreditEntry]
+  createInvoice(data: InvoiceCreateInput!): Invoice
+  createInvoices(data: [InvoiceCreateInput!]!): [Invoice]
+  updateInvoice(where: InvoiceWhereUniqueInput!, data: InvoiceUpdateInput!): Invoice
+  updateInvoices(data: [InvoiceUpdateArgs!]!): [Invoice]
+  deleteInvoice(where: InvoiceWhereUniqueInput!): Invoice
+  deleteInvoices(where: [InvoiceWhereUniqueInput!]!): [Invoice]
+  createInvoiceLine(data: InvoiceLineCreateInput!): InvoiceLine
+  createInvoiceLines(data: [InvoiceLineCreateInput!]!): [InvoiceLine]
+  updateInvoiceLine(where: InvoiceLineWhereUniqueInput!, data: InvoiceLineUpdateInput!): InvoiceLine
+  updateInvoiceLines(data: [InvoiceLineUpdateArgs!]!): [InvoiceLine]
+  deleteInvoiceLine(where: InvoiceLineWhereUniqueInput!): InvoiceLine
+  deleteInvoiceLines(where: [InvoiceLineWhereUniqueInput!]!): [InvoiceLine]
+  createPayment(data: PaymentCreateInput!): Payment
+  createPayments(data: [PaymentCreateInput!]!): [Payment]
+  updatePayment(where: PaymentWhereUniqueInput!, data: PaymentUpdateInput!): Payment
+  updatePayments(data: [PaymentUpdateArgs!]!): [Payment]
+  deletePayment(where: PaymentWhereUniqueInput!): Payment
+  deletePayments(where: [PaymentWhereUniqueInput!]!): [Payment]
+  createPaymentProvider(data: PaymentProviderCreateInput!): PaymentProvider
+  createPaymentProviders(data: [PaymentProviderCreateInput!]!): [PaymentProvider]
+  updatePaymentProvider(where: PaymentProviderWhereUniqueInput!, data: PaymentProviderUpdateInput!): PaymentProvider
+  updatePaymentProviders(data: [PaymentProviderUpdateArgs!]!): [PaymentProvider]
+  deletePaymentProvider(where: PaymentProviderWhereUniqueInput!): PaymentProvider
+  deletePaymentProviders(where: [PaymentProviderWhereUniqueInput!]!): [PaymentProvider]
+  createPaymentSession(data: PaymentSessionCreateInput!): PaymentSession
+  createPaymentSessions(data: [PaymentSessionCreateInput!]!): [PaymentSession]
+  updatePaymentSession(where: PaymentSessionWhereUniqueInput!, data: PaymentSessionUpdateInput!): PaymentSession
+  updatePaymentSessions(data: [PaymentSessionUpdateArgs!]!): [PaymentSession]
+  deletePaymentSession(where: PaymentSessionWhereUniqueInput!): PaymentSession
+  deletePaymentSessions(where: [PaymentSessionWhereUniqueInput!]!): [PaymentSession]
+  createPaymentWebhookEvent(data: PaymentWebhookEventCreateInput!): PaymentWebhookEvent
+  createPaymentWebhookEvents(data: [PaymentWebhookEventCreateInput!]!): [PaymentWebhookEvent]
+  updatePaymentWebhookEvent(where: PaymentWebhookEventWhereUniqueInput!, data: PaymentWebhookEventUpdateInput!): PaymentWebhookEvent
+  updatePaymentWebhookEvents(data: [PaymentWebhookEventUpdateArgs!]!): [PaymentWebhookEvent]
+  deletePaymentWebhookEvent(where: PaymentWebhookEventWhereUniqueInput!): PaymentWebhookEvent
+  deletePaymentWebhookEvents(where: [PaymentWebhookEventWhereUniqueInput!]!): [PaymentWebhookEvent]
+  createExpense(data: ExpenseCreateInput!): Expense
+  createExpenses(data: [ExpenseCreateInput!]!): [Expense]
+  updateExpense(where: ExpenseWhereUniqueInput!, data: ExpenseUpdateInput!): Expense
+  updateExpenses(data: [ExpenseUpdateArgs!]!): [Expense]
+  deleteExpense(where: ExpenseWhereUniqueInput!): Expense
+  deleteExpenses(where: [ExpenseWhereUniqueInput!]!): [Expense]
+  createNotificationLog(data: NotificationLogCreateInput!): NotificationLog
+  createNotificationLogs(data: [NotificationLogCreateInput!]!): [NotificationLog]
+  updateNotificationLog(where: NotificationLogWhereUniqueInput!, data: NotificationLogUpdateInput!): NotificationLog
+  updateNotificationLogs(data: [NotificationLogUpdateArgs!]!): [NotificationLog]
+  deleteNotificationLog(where: NotificationLogWhereUniqueInput!): NotificationLog
+  deleteNotificationLogs(where: [NotificationLogWhereUniqueInput!]!): [NotificationLog]
   endSession: Boolean!
   authenticateUserWithPassword(email: String!, password: String!): UserAuthenticationWithPasswordResult
   createInitialUser(data: CreateInitialUserInput!): UserAuthenticationWithPasswordSuccess!
@@ -856,18 +4489,90 @@ type Query {
   role(where: RoleWhereUniqueInput!): Role
   roles(where: RoleWhereInput! = {}, orderBy: [RoleOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: RoleWhereUniqueInput): [Role!]
   rolesCount(where: RoleWhereInput! = {}): Int
-  todo(where: TodoWhereUniqueInput!): Todo
-  todos(where: TodoWhereInput! = {}, orderBy: [TodoOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: TodoWhereUniqueInput): [Todo!]
-  todosCount(where: TodoWhereInput! = {}): Int
-  todoImage(where: TodoImageWhereUniqueInput!): TodoImage
-  todoImages(where: TodoImageWhereInput! = {}, orderBy: [TodoImageOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: TodoImageWhereUniqueInput): [TodoImage!]
-  todoImagesCount(where: TodoImageWhereInput! = {}): Int
   oAuthApp(where: OAuthAppWhereUniqueInput!): OAuthApp
   oAuthApps(where: OAuthAppWhereInput! = {}, orderBy: [OAuthAppOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: OAuthAppWhereUniqueInput): [OAuthApp!]
   oAuthAppsCount(where: OAuthAppWhereInput! = {}): Int
   oAuthToken(where: OAuthTokenWhereUniqueInput!): OAuthToken
   oAuthTokens(where: OAuthTokenWhereInput! = {}, orderBy: [OAuthTokenOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: OAuthTokenWhereUniqueInput): [OAuthToken!]
   oAuthTokensCount(where: OAuthTokenWhereInput! = {}): Int
+  tutorProfile(where: TutorProfileWhereUniqueInput!): TutorProfile
+  tutorProfiles(where: TutorProfileWhereInput! = {}, orderBy: [TutorProfileOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: TutorProfileWhereUniqueInput): [TutorProfile!]
+  tutorProfilesCount(where: TutorProfileWhereInput! = {}): Int
+  subject(where: SubjectWhereUniqueInput!): Subject
+  subjects(where: SubjectWhereInput! = {}, orderBy: [SubjectOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SubjectWhereUniqueInput): [Subject!]
+  subjectsCount(where: SubjectWhereInput! = {}): Int
+  sessionType(where: SessionTypeWhereUniqueInput!): SessionType
+  sessionTypes(where: SessionTypeWhereInput! = {}, orderBy: [SessionTypeOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionTypeWhereUniqueInput): [SessionType!]
+  sessionTypesCount(where: SessionTypeWhereInput! = {}): Int
+  weeklyHours(where: WeeklyHoursWhereUniqueInput!): WeeklyHours
+  weeklyHoursRows(where: WeeklyHoursWhereInput! = {}, orderBy: [WeeklyHoursOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: WeeklyHoursWhereUniqueInput): [WeeklyHours!]
+  weeklyHoursRowsCount(where: WeeklyHoursWhereInput! = {}): Int
+  timeOff(where: TimeOffWhereUniqueInput!): TimeOff
+  timeOffs(where: TimeOffWhereInput! = {}, orderBy: [TimeOffOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: TimeOffWhereUniqueInput): [TimeOff!]
+  timeOffsCount(where: TimeOffWhereInput! = {}): Int
+  package(where: PackageWhereUniqueInput!): Package
+  packages(where: PackageWhereInput! = {}, orderBy: [PackageOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PackageWhereUniqueInput): [Package!]
+  packagesCount(where: PackageWhereInput! = {}): Int
+  family(where: FamilyWhereUniqueInput!): Family
+  families(where: FamilyWhereInput! = {}, orderBy: [FamilyOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: FamilyWhereUniqueInput): [Family!]
+  familiesCount(where: FamilyWhereInput! = {}): Int
+  student(where: StudentWhereUniqueInput!): Student
+  students(where: StudentWhereInput! = {}, orderBy: [StudentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: StudentWhereUniqueInput): [Student!]
+  studentsCount(where: StudentWhereInput! = {}): Int
+  inquiry(where: InquiryWhereUniqueInput!): Inquiry
+  inquiries(where: InquiryWhereInput! = {}, orderBy: [InquiryOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: InquiryWhereUniqueInput): [Inquiry!]
+  inquiriesCount(where: InquiryWhereInput! = {}): Int
+  review(where: ReviewWhereUniqueInput!): Review
+  reviews(where: ReviewWhereInput! = {}, orderBy: [ReviewOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ReviewWhereUniqueInput): [Review!]
+  reviewsCount(where: ReviewWhereInput! = {}): Int
+  session(where: SessionWhereUniqueInput!): Session
+  sessions(where: SessionWhereInput! = {}, orderBy: [SessionOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionWhereUniqueInput): [Session!]
+  sessionsCount(where: SessionWhereInput! = {}): Int
+  sessionNote(where: SessionNoteWhereUniqueInput!): SessionNote
+  sessionNotes(where: SessionNoteWhereInput! = {}, orderBy: [SessionNoteOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionNoteWhereUniqueInput): [SessionNote!]
+  sessionNotesCount(where: SessionNoteWhereInput! = {}): Int
+  homework(where: HomeworkWhereUniqueInput!): Homework
+  homeworkItems(where: HomeworkWhereInput! = {}, orderBy: [HomeworkOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: HomeworkWhereUniqueInput): [Homework!]
+  homeworkItemsCount(where: HomeworkWhereInput! = {}): Int
+  progressMark(where: ProgressMarkWhereUniqueInput!): ProgressMark
+  progressMarks(where: ProgressMarkWhereInput! = {}, orderBy: [ProgressMarkOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ProgressMarkWhereUniqueInput): [ProgressMark!]
+  progressMarksCount(where: ProgressMarkWhereInput! = {}): Int
+  resource(where: ResourceWhereUniqueInput!): Resource
+  resources(where: ResourceWhereInput! = {}, orderBy: [ResourceOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ResourceWhereUniqueInput): [Resource!]
+  resourcesCount(where: ResourceWhereInput! = {}): Int
+  recurringSeries(where: RecurringSeriesWhereUniqueInput!): RecurringSeries
+  recurringSeriesItems(where: RecurringSeriesWhereInput! = {}, orderBy: [RecurringSeriesOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: RecurringSeriesWhereUniqueInput): [RecurringSeries!]
+  recurringSeriesItemsCount(where: RecurringSeriesWhereInput! = {}): Int
+  packagePurchase(where: PackagePurchaseWhereUniqueInput!): PackagePurchase
+  packagePurchases(where: PackagePurchaseWhereInput! = {}, orderBy: [PackagePurchaseOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PackagePurchaseWhereUniqueInput): [PackagePurchase!]
+  packagePurchasesCount(where: PackagePurchaseWhereInput! = {}): Int
+  creditEntry(where: CreditEntryWhereUniqueInput!): CreditEntry
+  creditEntries(where: CreditEntryWhereInput! = {}, orderBy: [CreditEntryOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: CreditEntryWhereUniqueInput): [CreditEntry!]
+  creditEntriesCount(where: CreditEntryWhereInput! = {}): Int
+  invoice(where: InvoiceWhereUniqueInput!): Invoice
+  invoices(where: InvoiceWhereInput! = {}, orderBy: [InvoiceOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: InvoiceWhereUniqueInput): [Invoice!]
+  invoicesCount(where: InvoiceWhereInput! = {}): Int
+  invoiceLine(where: InvoiceLineWhereUniqueInput!): InvoiceLine
+  invoiceLines(where: InvoiceLineWhereInput! = {}, orderBy: [InvoiceLineOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: InvoiceLineWhereUniqueInput): [InvoiceLine!]
+  invoiceLinesCount(where: InvoiceLineWhereInput! = {}): Int
+  payment(where: PaymentWhereUniqueInput!): Payment
+  payments(where: PaymentWhereInput! = {}, orderBy: [PaymentOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentWhereUniqueInput): [Payment!]
+  paymentsCount(where: PaymentWhereInput! = {}): Int
+  paymentProvider(where: PaymentProviderWhereUniqueInput!): PaymentProvider
+  paymentProviders(where: PaymentProviderWhereInput! = {}, orderBy: [PaymentProviderOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentProviderWhereUniqueInput): [PaymentProvider!]
+  paymentProvidersCount(where: PaymentProviderWhereInput! = {}): Int
+  paymentSession(where: PaymentSessionWhereUniqueInput!): PaymentSession
+  paymentSessions(where: PaymentSessionWhereInput! = {}, orderBy: [PaymentSessionOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentSessionWhereUniqueInput): [PaymentSession!]
+  paymentSessionsCount(where: PaymentSessionWhereInput! = {}): Int
+  paymentWebhookEvent(where: PaymentWebhookEventWhereUniqueInput!): PaymentWebhookEvent
+  paymentWebhookEvents(where: PaymentWebhookEventWhereInput! = {}, orderBy: [PaymentWebhookEventOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: PaymentWebhookEventWhereUniqueInput): [PaymentWebhookEvent!]
+  paymentWebhookEventsCount(where: PaymentWebhookEventWhereInput! = {}): Int
+  expense(where: ExpenseWhereUniqueInput!): Expense
+  expenses(where: ExpenseWhereInput! = {}, orderBy: [ExpenseOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: ExpenseWhereUniqueInput): [Expense!]
+  expensesCount(where: ExpenseWhereInput! = {}): Int
+  notificationLog(where: NotificationLogWhereUniqueInput!): NotificationLog
+  notificationLogs(where: NotificationLogWhereInput! = {}, orderBy: [NotificationLogOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: NotificationLogWhereUniqueInput): [NotificationLog!]
+  notificationLogsCount(where: NotificationLogWhereInput! = {}): Int
   keystone: KeystoneMeta!
   authenticatedItem: AuthenticatedItem
   validateUserPasswordResetToken(email: String!, token: String!): ValidateUserPasswordResetTokenResult
