@@ -53,7 +53,7 @@ export async function requestPasswordReset(email: string) {
   const e = email.trim().toLowerCase()
   if (!EMAIL.test(e)) return { ok: false, error: 'Enter the email you sign in with.' }
   const r = await keystoneClient<{ sendUserPasswordResetLink: boolean }>('mutation($email: String!) { sendUserPasswordResetLink(email: $email) }', { email: e })
-  if (!r.success) return { ok: false, error: 'The reset email could not be sent from this site right now. Try again later, or ask your tutor to send you a new account link.' }
+  if (!r.success) return { ok: false, error: r.error }
   return { ok: true, error: null }
 }
 
