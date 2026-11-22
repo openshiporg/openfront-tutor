@@ -120,3 +120,19 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ---------- Storefront (Procyon): cream paper, burgundy, navy ---------- */
+@theme inline {
+  --color-paper: #f8f2ea;
+  --color-paper-deep: #f1e7dc;
+  --color-card-blush: #f3e6e1;
+  --color-wine: #7d1d34;
+  --color-wine-dark: #63152a;
+  --color-ink: #1c2a4a;
+  --color-ink-soft: #3a4560;
+  --color-line: #e3d5c8;
+  --font-display: var(--font-sf-serif), Georgia, serif;
+  --font-script: var(--font-sf-script), cursive;
+  --font-hand: var(--font-sf-hand), cursive;
+  --font-body: var(--font-sf-sans), system-ui, sans-serif;
+}
