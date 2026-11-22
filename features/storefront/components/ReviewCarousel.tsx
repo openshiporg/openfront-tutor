@@ -34,9 +34,9 @@ export function ReviewCarousel({ reviews }: { reviews: PublicReview[] }) {
         ) : null}
       </div>
       {reviews.length > 1 ? (
-        <div className="mt-3 flex justify-center gap-0.5">
+        <div className="mt-1 flex justify-center">
           {reviews.slice(0, 8).map((x, k) => (
-            <button key={x.id} type="button" onClick={() => setI(k)} aria-label={`Review ${k + 1}`} aria-current={k === i} className="flex size-6 items-center justify-center">
+            <button key={x.id} type="button" onClick={() => setI(k)} aria-label={`Review ${k + 1}`} aria-current={k === i} className="flex size-11 items-center justify-center">
               <span className={cx('size-2 rounded-full', k === i ? 'bg-wine' : 'bg-ink/20')} />
             </button>
           ))}

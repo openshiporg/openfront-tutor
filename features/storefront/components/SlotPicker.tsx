@@ -82,7 +82,7 @@ export function SlotPicker({ slug, sessionTypeId, timezone, maxAdvanceDays, valu
           return (
             <button key={k} type="button" role="option" aria-selected={date === k} disabled={!open}
               onClick={() => { setDate(k); onChange(null) }}
-              className={cx('flex min-h-[68px] w-[60px] shrink-0 snap-start flex-col items-center justify-center rounded-xl border text-center transition-colors',
+              className={cx('relative flex min-h-[68px] w-[60px] shrink-0 snap-start flex-col items-center justify-center rounded-xl border text-center transition-colors',
                 date === k ? 'border-wine bg-wine text-white' : open ? 'border-line bg-white text-ink hover:border-wine' : 'border-transparent bg-ink/[0.03] text-ink-soft/50')}>
               <span className="text-[12px] font-semibold uppercase tracking-wide">{l.weekday}</span>
               <span className="font-display text-[20px] font-semibold leading-tight">{l.day}</span>
