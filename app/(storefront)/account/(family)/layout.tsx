@@ -24,7 +24,7 @@ export default async function FamilyLayout({ children }: { children: React.React
     )
   }
   return (
-    <div className="mx-auto grid max-w-[1240px] gap-6 px-5 py-8 sm:px-8 lg:grid-cols-[210px_minmax(0,1fr)] lg:gap-10 lg:py-10">
+    <div className="mx-auto grid max-w-[1240px] grid-cols-[minmax(0,1fr)] gap-6 px-5 py-8 sm:px-8 lg:grid-cols-[210px_minmax(0,1fr)] lg:gap-10 lg:py-10">
       <aside className="lg:sticky lg:top-6 lg:self-start">
         <p className="mb-2 hidden px-3 text-[13px] font-semibold uppercase tracking-[0.14em] text-ink-soft lg:block">{viewer.name}</p>
         <AccountNav />
