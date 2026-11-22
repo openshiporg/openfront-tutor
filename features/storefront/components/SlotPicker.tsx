@@ -86,11 +86,12 @@ export function SlotPicker({ slug, sessionTypeId, timezone, maxAdvanceDays, valu
                 date === k ? 'border-wine bg-wine text-white' : open ? 'border-line bg-white text-ink hover:border-wine' : 'border-transparent bg-ink/[0.03] text-ink-soft/50')}>
               <span className="text-[12px] font-semibold uppercase tracking-wide">{l.weekday}</span>
               <span className="font-display text-[20px] font-semibold leading-tight">{l.day}</span>
-              <span className="sr-only">{open ? 'open' : 'no times'}</span>
+              <span className="sr-only">{days === null ? 'checking' : open ? 'open' : 'no times'}</span>
             </button>
           )
         })}
       </div>
+      {days === null && !dayError ? <p className="text-[15px] text-ink-soft" aria-live="polite">Finding open days…</p> : null}
       {dayError ? <Notice tone="error">{dayError}</Notice> : null}
       {days && !days.length && !dayError ? <p className="text-[15px] text-ink-soft">No open times in these two weeks. Try later days.</p> : null}
       {date ? (
