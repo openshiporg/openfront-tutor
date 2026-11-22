@@ -4494,6 +4494,40 @@ type Mutation {
   reportPayment(target: String!, targetId: ID!, amountCents: Int!, method: String!, reference: String!): CommandResult!
   submitReview(rating: Int!, body: String, displayName: String): CommandResult!
   updateMyContact(contact: ContactInput!): CommandResult!
+  setUpMyBusiness(businessName: String!, tutorName: String, slug: String!, timezone: String!, currencyCode: String, country: String, subjects: [String!], levels: String, teachesOnline: Boolean, teachesInPerson: Boolean, hourlyRateCents: Int, typicalSetup: Boolean, email: String): CommandResult!
+  createSessionAsTutor(familyId: ID!, sessionTypeId: ID!, startsAt: String!, studentIds: [ID!]!, mode: String, meetingUrl: String, notify: Boolean): CommandResult!
+  completeSession(sessionId: ID!, note: SessionNoteInput, homework: [HomeworkInput!], share: Boolean): CommandResult!
+  saveSessionNote(sessionId: ID!, covered: String, wentWell: String, workOnNext: String, effort: Int, privateNote: String, share: Boolean): CommandResult!
+  markNoShow(sessionId: ID!): CommandResult!
+  cancelSessionAsTutor(sessionId: ID!, reason: String, notify: Boolean): CommandResult!
+  rescheduleSessionAsTutor(sessionId: ID!, startsAt: String!, notify: Boolean): CommandResult!
+  excuseSession(sessionId: ID!): CommandResult!
+  reopenSession(sessionId: ID!): CommandResult!
+  sessionLink(sessionId: ID!): CommandResult!
+  saveSeries(id: ID, familyId: ID!, sessionTypeId: ID!, studentIds: [ID!]!, dayOfWeek: Int!, startMinute: Int!, startsOn: String!, endsOn: String, mode: String): CommandResult!
+  pauseSeries(id: ID!, resume: Boolean): CommandResult!
+  endSeries(id: ID!): CommandResult!
+  clearSkippedWeek(id: ID!, date: String!): CommandResult!
+  inviteFamily(familyId: ID!, send: Boolean): CommandResult!
+  saveStudentAsTutor(student: TutorStudentInput!): CommandResult!
+  convertInquiry(id: ID!, studentName: String, billingMode: String): CommandResult!
+  setInquiryStatus(id: ID!, status: String!): CommandResult!
+  reviewHomework(id: ID!, feedback: String): CommandResult!
+  moderateReview(id: ID!, status: String!): CommandResult!
+  sellPackage(familyId: ID!, packageId: ID!, method: String!, reference: String): CommandResult!
+  cancelPackagePurchase(purchaseId: ID!): CommandResult!
+  refundPackage(purchaseId: ID!): CommandResult!
+  adjustMinutes(purchaseId: ID!, minutes: Int!, reason: String!): CommandResult!
+  confirmPayment(paymentId: ID!): CommandResult!
+  rejectPayment(paymentId: ID!, note: String): CommandResult!
+  recordPayment(target: String!, targetId: ID!, amountCents: Int, method: String!, reference: String): CommandResult!
+  refundPayment(paymentId: ID!, amountCents: Int, note: String): CommandResult!
+  draftInvoice(familyId: ID!, sessionIds: [ID!], includeFlatFee: Boolean, extraLines: [InvoiceLineInput!], dueDays: Int, note: String): CommandResult!
+  addInvoiceLine(invoiceId: ID!, line: InvoiceLineInput!): CommandResult!
+  removeInvoiceLine(lineId: ID!): CommandResult!
+  sendInvoice(invoiceId: ID!, send: Boolean): CommandResult!
+  invoiceLink(invoiceId: ID!): CommandResult!
+  voidInvoice(invoiceId: ID!): CommandResult!
 }
 
 union UserAuthenticationWithPasswordResult = UserAuthenticationWithPasswordSuccess | UserAuthenticationWithPasswordFailure
@@ -4636,6 +4670,20 @@ type Query {
   myResources: CommandResult!
   myProgress(studentId: ID!): CommandResult!
   myCalendarFeedUrl: CommandResult!
+  myBusiness: CommandResult!
+  today: CommandResult!
+  calendar(from: String!, to: String!): CommandResult!
+  tutorSession(id: ID!): CommandResult!
+  familiesOverview(status: String, search: String): CommandResult!
+  tutorFamily(id: ID!): CommandResult!
+  tutorStudent(id: ID!): CommandResult!
+  homeworkBoard: CommandResult!
+  readyToInvoice: CommandResult!
+  tutorInvoice(id: ID!): CommandResult!
+  myEarnings(from: String!, to: String!): CommandResult!
+  paymentSettings: CommandResult!
+  tutorCalendarFeedUrl: CommandResult!
+  exportCsv(kind: String!, from: String!, to: String!): CommandResult!
 }
 
 union AuthenticatedItem = User
@@ -4800,6 +4848,43 @@ input StudentInput {
   school: String
   goals: String
   birthYear: Int
+}
+
+input SessionNoteInput {
+  covered: String
+  wentWell: String
+  workOnNext: String
+  effort: Int
+  privateNote: String
+}
+
+input HomeworkInput {
+  title: String!
+  instructions: String
+  dueAt: String
+  linkUrl: String
+  studentId: ID
+}
+
+input InvoiceLineInput {
+  description: String!
+  quantity: Int
+  unitCents: Int!
+}
+
+input TutorStudentInput {
+  id: ID
+  familyId: ID!
+  firstName: String!
+  lastName: String
+  level: String
+  school: String
+  goals: String
+  needs: String
+  meetingUrl: String
+  birthYear: Int
+  status: String
+  subjectIds: [ID!]
 }
 
 input ContactInput {

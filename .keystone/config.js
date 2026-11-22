@@ -188,6 +188,13 @@ async function lockTutorBilling(tx, profileId) {
 async function lockFamily(tx, familyId) {
   await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", "tutor-family", familyId);
 }
+async function requireTutor(db, session, permission = "canManageSessions") {
+  if (!session) throw new CommandError("Sign in first.");
+  if (!session.data.role?.[permission]) throw new CommandError("Your role does not allow this.");
+  const profile = await db.tutorProfile.findFirst({ where: { ownerId: session.itemId } });
+  if (!profile) throw new CommandError("Set up your business first.");
+  return profile;
+}
 function cleanText(value, max) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
@@ -439,6 +446,28 @@ async function reopenDebit(tx, profileId, sessionId) {
 }
 async function grantMinutes(tx, purchase) {
   await write(tx, { profileId: purchase.profileId, purchaseId: purchase.id, kind: "grant", minutes: purchase.minutesGranted, note: "Package paid" });
+}
+async function refundRemaining(tx, purchase, note) {
+  const done = await tx.packagePurchase.updateMany({ where: { id: purchase.id, minutesRemaining: purchase.minutesRemaining, status: { in: ["active", "used_up", "expired"] } }, data: { minutesRemaining: 0, status: "refunded" } });
+  if (!done.count) throw new CommandError("This package changed. Refresh and try again.");
+  if (purchase.minutesRemaining > 0) await write(tx, { profileId: purchase.profileId, purchaseId: purchase.id, kind: "refund", minutes: -purchase.minutesRemaining, note });
+}
+async function adjustMinutes(tx, purchase, minutes, note) {
+  if (!Number.isSafeInteger(minutes) || minutes === 0) throw new CommandError("Enter the minutes to add or take away.");
+  if (!note.trim()) throw new CommandError("Give a reason for the change.");
+  const where = minutes < 0 ? { id: purchase.id, status: { in: ["active"] }, minutesRemaining: { gte: -minutes } } : { id: purchase.id, status: { in: ["active", "used_up"] } };
+  const done = await tx.packagePurchase.updateMany({ where, data: { minutesRemaining: { increment: minutes } } });
+  if (!done.count) throw new CommandError(minutes < 0 ? "Not enough time left on this package." : "Only an active package can be changed.");
+  await tx.packagePurchase.updateMany({ where: { id: purchase.id, status: "used_up", minutesRemaining: { gt: 0 } }, data: { status: "active" } });
+  await write(tx, { profileId: purchase.profileId, purchaseId: purchase.id, kind: "adjustment", minutes, note });
+  await markUsedUp(tx, purchase.id);
+}
+async function checkPurchase(tx, purchaseId) {
+  const [p, sum] = await Promise.all([
+    tx.packagePurchase.findUnique({ where: { id: purchaseId }, select: { minutesRemaining: true } }),
+    tx.creditEntry.aggregate({ where: { purchaseId }, _sum: { minutes: true } })
+  ]);
+  return { stored: p?.minutesRemaining ?? 0, ledger: sum._sum.minutes ?? 0, ok: Boolean(p) && p.minutesRemaining === (sum._sum.minutes ?? 0) && p.minutesRemaining >= 0 };
 }
 var init_ledger = __esm({
   "features/keystone/utils/ledger.ts"() {
@@ -854,6 +883,12 @@ var init_payments = __esm({
 });
 
 // features/keystone/utils/publicAccessToken.ts
+var publicAccessToken_exports = {};
+__export(publicAccessToken_exports, {
+  createPublicAccessToken: () => createPublicAccessToken,
+  hashPublicAccessToken: () => hashPublicAccessToken,
+  publicAccessTokenMatches: () => publicAccessTokenMatches
+});
 function hashPublicAccessToken(token) {
   return (0, import_node_crypto3.createHash)("sha256").update(token, "utf8").digest("hex");
 }
@@ -1014,8 +1049,8 @@ async function bookInLock(tx, input) {
     } catch (e) {
       if (!(e instanceof CommandError)) throw e;
       const fallback = family.billingMode === "invoice" ? "invoice" : family.billingMode === "flat_monthly" ? "flat" : "card";
-      const pay = fallback === "card" && actor === "guardian" && stripeOn();
-      await tx.session.update({ where: { id: session.id }, data: { funding: fallback, paymentStatus: fallback === "card" ? "unpaid" : "not_due", ...pay ? { status: "pending_payment", holdEndsAt: new Date(now.getTime() + profile.unpaidHoldMinutes * 6e4) } : {} } });
+      const pay2 = fallback === "card" && actor === "guardian" && stripeOn();
+      await tx.session.update({ where: { id: session.id }, data: { funding: fallback, paymentStatus: fallback === "card" ? "unpaid" : "not_due", ...pay2 ? { status: "pending_payment", holdEndsAt: new Date(now.getTime() + profile.unpaidHoldMinutes * 6e4) } : {} } });
       return { session: await tx.session.findUniqueOrThrow({ where: { id: session.id } }), token: access.token };
     }
   }
@@ -1200,10 +1235,10 @@ async function topUpSeriesInLock(tx, seriesId, now = /* @__PURE__ */ new Date())
   const type = await tx.sessionType.findUnique({ where: { id: series.sessionTypeId } });
   const family = await tx.family.findUnique({ where: { id: series.familyId }, select: { id: true, status: true, billingMode: true } });
   if (!type || !family) return { created: 0, skipped: [] };
-  const today = businessDateKey(now, profile.timezone);
-  const horizon = addDays(today, WEEKS_AHEAD * 7);
+  const today2 = businessDateKey(now, profile.timezone);
+  const horizon = addDays(today2, WEEKS_AHEAD * 7);
   let date = series.generatedThrough ? addDays(series.generatedThrough, 1) : series.startsOn;
-  if (date < today) date = today;
+  if (date < today2) date = today2;
   while (dayIndexFor(date) !== series.dayOfWeek) date = addDays(date, 1);
   const skipped = [];
   let created = 0;
@@ -2642,6 +2677,147 @@ init_business();
 init_ledger();
 init_payments();
 init_publicAccessToken();
+var monthKey = (d, tz) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit" }).format(d).slice(0, 7);
+async function readyToInvoice(db, profileId, familyId) {
+  const profile = await db.tutorProfile.findUniqueOrThrow({ where: { id: profileId } });
+  const sessions = await db.session.findMany({
+    where: { profileId, ...familyId ? { familyId } : {}, funding: "invoice", billable: "yes", chargedCents: { gt: 0 }, invoiceLines: { none: { invoice: { status: { in: ["draft", "sent", "paid"] } } } } },
+    select: { id: true, familyId: true, startsAt: true, typeNameSnapshot: true, chargedCents: true, status: true },
+    orderBy: { startsAt: "asc" },
+    take: 500
+  });
+  const flat = await db.family.findMany({ where: { profileId, ...familyId ? { id: familyId } : {}, billingMode: "flat_monthly", monthlyFeeCents: { gt: 0 }, status: { in: ["active", "paused"] } }, select: { id: true, monthlyFeeCents: true }, take: 500 });
+  const month = monthKey(/* @__PURE__ */ new Date(), profile.timezone);
+  const billedFlat = new Set((await db.invoice.findMany({ where: { profileId, periodMonth: month, status: { in: ["draft", "sent", "paid"] } }, select: { familyId: true }, take: 1e3 })).map((i) => i.familyId));
+  const families = /* @__PURE__ */ new Map();
+  const entry = (id) => {
+    if (!families.has(id)) families.set(id, { familyId: id, sessions: [], flatMonth: null, flatCents: 0, totalCents: 0 });
+    return families.get(id);
+  };
+  for (const s of sessions) if (s.familyId) {
+    const e = entry(s.familyId);
+    e.sessions.push(s);
+    e.totalCents += s.chargedCents;
+  }
+  for (const f of flat) if (!billedFlat.has(f.id)) {
+    const e = entry(f.id);
+    e.flatMonth = month;
+    e.flatCents = f.monthlyFeeCents;
+    e.totalCents += f.monthlyFeeCents;
+  }
+  const names = await db.family.findMany({ where: { id: { in: [...families.keys()] } }, select: { id: true, guardianName: true, billingMode: true } });
+  return [...families.values()].map((e) => ({ ...e, guardianName: names.find((n) => n.id === e.familyId)?.guardianName ?? "", billingMode: names.find((n) => n.id === e.familyId)?.billingMode ?? "", sessions: e.sessions.map((s) => ({ ...s, startsAt: s.startsAt.toISOString() })) }));
+}
+async function recomputeTotals(tx, invoiceId) {
+  const lines = await tx.invoiceLine.aggregate({ where: { invoiceId }, _sum: { totalCents: true } });
+  const total = lines._sum.totalCents ?? 0;
+  await tx.invoice.updateMany({ where: { id: invoiceId, status: "draft" }, data: { subtotalCents: total, totalCents: total } });
+}
+async function createInvoice(prisma, profileId, input) {
+  return transaction(prisma, async (tx) => {
+    await lockTutorBooking(tx, profileId);
+    await lockTutorBilling(tx, profileId);
+    const profile = await tx.tutorProfile.findUniqueOrThrow({ where: { id: profileId } });
+    const family = await tx.family.findFirst({ where: { id: input.familyId, profileId } });
+    if (!family) throw new CommandError("Choose a family.");
+    const ready = (await readyToInvoice(tx, profileId, family.id))[0];
+    const wanted = input.sessionIds?.length ? new Set(input.sessionIds) : null;
+    const sessions = (ready?.sessions ?? []).filter((s) => !wanted || wanted.has(s.id));
+    if (wanted && sessions.length !== wanted.size) throw new CommandError("One of those sessions is already on an invoice or is not charged.");
+    const flat = input.includeFlatFee !== false && ready?.flatMonth ? { month: ready.flatMonth, cents: ready.flatCents } : null;
+    const extras = (input.extraLines ?? []).map((l) => {
+      const description = cleanText(l.description, 200);
+      if (!description) throw new CommandError("Each extra line needs a description.");
+      const quantity = Math.floor(Number(l.quantity ?? 1));
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1e3) throw new CommandError("Quantity must be 1 or more.");
+      const unit = wholeCents(l.unitCents, "Line price");
+      return { description, quantity, unitCents: unit, totalCents: unit * quantity };
+    });
+    if (!sessions.length && !flat && !extras.length) throw new CommandError("There is nothing to invoice for this family.");
+    const counter = profile.invoiceCounter + 1;
+    const bumped = await tx.tutorProfile.updateMany({ where: { id: profileId, invoiceCounter: profile.invoiceCounter }, data: { invoiceCounter: counter } });
+    if (!bumped.count) throw new CommandError("Try again.");
+    const dueDays = input.dueDays == null ? profile.invoiceDueDays : Math.max(0, Math.min(90, Math.floor(input.dueDays)));
+    const access = createPublicAccessToken();
+    const invoice = await tx.invoice.create({
+      data: {
+        profileId,
+        familyId: family.id,
+        number: `INV-${String(counter).padStart(4, "0")}`,
+        status: "draft",
+        dueAt: new Date(Date.now() + dueDays * 864e5),
+        periodMonth: flat?.month ?? "",
+        note: cleanText(input.note, 1e3),
+        publicAccessTokenHash: access.hash
+      }
+    });
+    let order = 0;
+    const fmt2 = (d) => new Intl.DateTimeFormat("en-US", { timeZone: profile.timezone, dateStyle: "medium" }).format(new Date(d));
+    for (const s of sessions) {
+      await tx.invoiceLine.create({ data: { profileId, invoiceId: invoice.id, sessionId: s.id, description: `${s.typeNameSnapshot} \xB7 ${fmt2(s.startsAt)}${s.status !== "completed" ? ` (${s.status === "no_show" ? "no-show" : "late cancellation"})` : ""}`, quantity: 1, unitCents: s.chargedCents, totalCents: s.chargedCents, sortOrder: order++ } });
+    }
+    if (flat) await tx.invoiceLine.create({ data: { profileId, invoiceId: invoice.id, description: `Monthly tutoring fee \xB7 ${flat.month}`, quantity: 1, unitCents: flat.cents, totalCents: flat.cents, sortOrder: order++ } });
+    for (const l of extras) await tx.invoiceLine.create({ data: { profileId, invoiceId: invoice.id, ...l, sortOrder: order++ } });
+    if (sessions.length) {
+      const twice = await tx.invoiceLine.groupBy({ by: ["sessionId"], where: { sessionId: { in: sessions.map((s) => s.id) }, invoice: { status: { in: ["draft", "sent", "paid"] } } }, _count: { _all: true } });
+      if (twice.some((g) => g._count._all > 1)) throw new CommandError("One of those sessions is already on an invoice.");
+    }
+    await recomputeTotals(tx, invoice.id);
+    return { id: invoice.id, number: invoice.number, token: access.token };
+  });
+}
+async function addInvoiceLine(prisma, profileId, invoiceId, line) {
+  return transaction(prisma, async (tx) => {
+    await lockTutorBilling(tx, profileId);
+    const inv = await tx.invoice.findFirst({ where: { id: invoiceId, profileId } });
+    if (!inv) throw new CommandError("Invoice not found.");
+    if (inv.status !== "draft") throw new CommandError("A sent invoice cannot be changed. Void it and issue a new one.");
+    const description = cleanText(line.description, 200);
+    if (!description) throw new CommandError("Enter a description.");
+    const quantity = Math.max(1, Math.floor(Number(line.quantity ?? 1)));
+    const unit = wholeCents(line.unitCents, "Line price");
+    const order = await tx.invoiceLine.count({ where: { invoiceId } });
+    await tx.invoiceLine.create({ data: { profileId, invoiceId, description, quantity, unitCents: unit, totalCents: unit * quantity, sortOrder: order } });
+    await recomputeTotals(tx, invoiceId);
+    return { id: invoiceId };
+  });
+}
+async function removeInvoiceLine(prisma, profileId, lineId) {
+  return transaction(prisma, async (tx) => {
+    await lockTutorBilling(tx, profileId);
+    const line = await tx.invoiceLine.findFirst({ where: { id: lineId, profileId }, include: { invoice: { select: { id: true, status: true } } } });
+    if (!line?.invoice) throw new CommandError("Line not found.");
+    if (line.invoice.status !== "draft") throw new CommandError("A sent invoice cannot be changed. Void it and issue a new one.");
+    await tx.invoiceLine.delete({ where: { id: line.id } });
+    await recomputeTotals(tx, line.invoice.id);
+    return { id: line.invoice.id };
+  });
+}
+async function sendInvoice(prisma, profileId, invoiceId) {
+  const access = createPublicAccessToken();
+  const inv = await transaction(prisma, async (tx) => {
+    await lockTutorBilling(tx, profileId);
+    const inv2 = await tx.invoice.findFirst({ where: { id: invoiceId, profileId } });
+    if (!inv2) throw new CommandError("Invoice not found.");
+    if (inv2.status !== "draft") throw new CommandError("This invoice was already sent.");
+    if (inv2.totalCents <= 0) throw new CommandError("An invoice must be for more than zero.");
+    await tx.invoice.updateMany({ where: { id: inv2.id, status: "draft" }, data: { status: "sent", issuedAt: /* @__PURE__ */ new Date(), publicAccessTokenHash: access.hash } });
+    return inv2;
+  });
+  return { ...inv, token: access.token };
+}
+async function voidInvoice(prisma, profileId, invoiceId) {
+  return transaction(prisma, async (tx) => {
+    await lockTutorBilling(tx, profileId);
+    const inv = await tx.invoice.findFirst({ where: { id: invoiceId, profileId } });
+    if (!inv) throw new CommandError("Invoice not found.");
+    if (!["draft", "sent"].includes(inv.status)) throw new CommandError("Only an unpaid invoice can be voided.");
+    if (inv.paidCents > 0) throw new CommandError("This invoice has payments on it. Refund them first.");
+    await tx.invoice.updateMany({ where: { id: inv.id, status: inv.status }, data: { status: "void", voidedAt: /* @__PURE__ */ new Date() } });
+    await tx.payment.updateMany({ where: { invoiceId: inv.id, status: "reported" }, data: { status: "rejected", decidedAt: /* @__PURE__ */ new Date(), note: "Invoice voided" } });
+    return { id: inv.id, status: "void" };
+  });
+}
 var METHODS = ["cash", "bank_transfer", "mobile_money", "other"];
 function offlineMethod(value) {
   if (!METHODS.includes(value)) throw new CommandError("Choose how it was paid: cash, bank transfer, mobile money or other.");
@@ -2681,6 +2857,46 @@ async function reportPayment(prisma, profileId, familyId, input) {
     return { id: p.id, status: "reported" };
   });
 }
+async function applyConfirmed(tx, p) {
+  if (p.invoiceId) {
+    if (!await applyInvoicePayment(tx, p.invoiceId, p.amountCents)) throw new CommandError("That is more than what is owed on this invoice, or it is no longer open.");
+  } else if (p.purchaseId) {
+    const purchase = await tx.packagePurchase.findUnique({ where: { id: p.purchaseId }, include: { package: { select: { validMonths: true } } } });
+    if (!purchase || p.amountCents < purchase.pricePaidCents) throw new CommandError("A package is activated when its full price is paid.");
+    if (!await activatePurchase(tx, purchase, p.amountCents)) throw new CommandError("This package is not waiting for payment.");
+  } else if (p.sessionId) {
+    await tx.session.update({ where: { id: p.sessionId }, data: { paymentStatus: "paid" } });
+  }
+}
+async function confirmPayment(prisma, profileId, paymentId) {
+  return transaction(prisma, async (tx) => {
+    await lockTutorBilling(tx, profileId);
+    const p = await tx.payment.findFirst({ where: { id: paymentId, profileId } });
+    if (!p || p.status !== "reported") throw new CommandError("This payment is not waiting for you.");
+    const done = await tx.payment.updateMany({ where: { id: p.id, status: "reported" }, data: { status: "confirmed", decidedAt: /* @__PURE__ */ new Date() } });
+    if (!done.count) throw new CommandError("Already handled.");
+    await applyConfirmed(tx, p);
+    return { id: p.id, status: "confirmed" };
+  });
+}
+async function rejectPayment(prisma, profileId, paymentId, note) {
+  const db = guarded(prisma);
+  const done = await db.payment.updateMany({ where: { id: paymentId, profileId, status: "reported" }, data: { status: "rejected", decidedAt: /* @__PURE__ */ new Date(), note: cleanText(note, 300) } });
+  if (!done.count) throw new CommandError("This payment is not waiting for you.");
+  return { id: paymentId, status: "rejected" };
+}
+async function recordPayment(prisma, profileId, input) {
+  const method = offlineMethod(input.method);
+  return transaction(prisma, async (tx) => {
+    await lockTutorBilling(tx, profileId);
+    const t = await targetFor(tx, profileId, null, input.target);
+    const amount = input.amountCents == null ? t.due : wholeCents(input.amountCents, "Amount");
+    if (amount <= 0 || amount > t.due) throw new CommandError("Enter an amount up to what is owed.");
+    const p = await tx.payment.create({ data: { profileId, familyId: t.familyId, invoiceId: t.invoiceId ?? null, purchaseId: t.purchaseId ?? null, sessionId: t.sessionId ?? null, kind: input.target.kind, method, status: "confirmed", amountCents: amount, reference: cleanText(input.reference, 120), paidAt: /* @__PURE__ */ new Date(), decidedAt: /* @__PURE__ */ new Date() } });
+    await applyConfirmed(tx, p);
+    return { id: p.id, status: "confirmed", amountCents: amount };
+  });
+}
 async function startPurchase(prisma, profileId, familyId, packageId) {
   return transaction(prisma, async (tx) => {
     const pkg = await tx.package.findFirst({ where: { id: packageId, profileId, active: true }, include: { appliesTo: { select: { id: true } } } });
@@ -2692,6 +2908,62 @@ async function startPurchase(prisma, profileId, familyId, packageId) {
     if (waiting >= 3) throw new CommandError("You have packages waiting for payment. Pay or ask your tutor to cancel them first.");
     return tx.packagePurchase.create({ data: { profileId, familyId, packageId: pkg.id, nameSnapshot: pkg.name, appliesToIds: pkg.appliesTo.map((t) => t.id).join(","), minutesGranted: pkg.minutes, minutesRemaining: 0, pricePaidCents: pkg.priceCents, status: "awaiting_payment" } });
   });
+}
+async function sellPackage(prisma, profileId, input) {
+  offlineMethod(input.method);
+  const purchase = await startPurchase(prisma, profileId, input.familyId, input.packageId);
+  if (purchase.pricePaidCents === 0) {
+    await transaction(prisma, async (tx) => {
+      await lockTutorBilling(tx, profileId);
+      await activatePurchase(tx, { ...purchase, package: await tx.package.findUnique({ where: { id: input.packageId }, select: { validMonths: true } }) }, 0);
+    });
+    return { purchaseId: purchase.id };
+  }
+  await recordPayment(prisma, profileId, { target: { kind: "package", id: purchase.id }, method: input.method, reference: input.reference });
+  return { purchaseId: purchase.id };
+}
+async function cancelPurchase(prisma, profileId, purchaseId) {
+  const db = guarded(prisma);
+  const done = await db.packagePurchase.updateMany({ where: { id: purchaseId, profileId, status: "awaiting_payment" }, data: { status: "cancelled" } });
+  if (!done.count) throw new CommandError("Only a package waiting for payment can be cancelled.");
+  await db.payment.updateMany({ where: { purchaseId, status: "reported" }, data: { status: "rejected", decidedAt: /* @__PURE__ */ new Date(), note: "Package cancelled" } });
+  await db.paymentSession.updateMany({ where: { purchaseId, status: "pending" }, data: { status: "cancelled" } });
+  return { id: purchaseId };
+}
+async function refundPackage(prisma, profileId, purchaseId) {
+  const claim = await transaction(prisma, async (tx) => {
+    await lockTutorBooking(tx, profileId);
+    const p2 = await tx.packagePurchase.findFirst({ where: { id: purchaseId, profileId } });
+    if (!p2 || !["active", "used_up", "expired"].includes(p2.status)) throw new CommandError("Only a paid package can be refunded.");
+    const held = await tx.creditEntry.aggregate({ where: { purchaseId, sessionId: { not: null } }, _sum: { heldChange: true } });
+    if ((held._sum.heldChange ?? 0) > 0) throw new CommandError("Some of these minutes are booked. Cancel or complete those sessions first.");
+    const refundCents2 = p2.minutesGranted > 0 ? Math.floor((p2.pricePaidCents - p2.refundedCents) * p2.minutesRemaining / p2.minutesGranted) : 0;
+    await refundRemaining(tx, p2, "Unused minutes refunded");
+    return { p: p2, refundCents: refundCents2 };
+  });
+  const { p, refundCents } = claim;
+  const payments = await guarded(prisma).payment.findMany({ where: { purchaseId, kind: "package", status: { in: ["confirmed", "partially_refunded"] } }, orderBy: { createdAt: "asc" }, take: 10 });
+  let left = refundCents;
+  try {
+    for (const pay2 of payments) {
+      if (left <= 0) break;
+      const amount = Math.min(pay2.amountCents - pay2.refundedCents - pay2.refundPendingCents, left);
+      if (amount <= 0) continue;
+      await refundPaymentRow(prisma, pay2.id, amount, `Unused package minutes (${p.minutesRemaining} of ${p.minutesGranted})`);
+      left -= amount;
+    }
+  } catch (error) {
+    if (left === refundCents) {
+      await transaction(prisma, async (tx) => {
+        await lockTutorBooking(tx, profileId);
+        await tx.packagePurchase.update({ where: { id: purchaseId }, data: { status: p.status, minutesRemaining: { increment: p.minutesRemaining } } });
+        if (p.minutesRemaining > 0) await tx.creditEntry.create({ data: { profileId, purchaseId, kind: "adjustment", minutes: p.minutesRemaining, note: "Refund did not go through; minutes restored", key: `${purchaseId}:restore:${Date.now()}` } });
+      });
+    }
+    throw error;
+  }
+  await guarded(prisma).packagePurchase.update({ where: { id: purchaseId }, data: { refundedCents: { increment: refundCents - left } } });
+  return { refundedCents: refundCents - left, minutes: p.minutesRemaining };
 }
 
 // features/keystone/utils/publicOps.ts
@@ -2787,6 +3059,7 @@ var familyHomeworkSelect = {
   linkUrl: true,
   file_filename: true,
   file_filesize: true,
+  // fileUrl = /api/files/homework/<id> when file_filename is set
   status: true,
   handedInAt: true,
   guardianComment: true,
@@ -3056,9 +3329,9 @@ async function sendInquiry(prisma, input) {
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new CommandError("Enter a valid email.");
   const recent = await db.inquiry.count({ where: { profileId: profile.id, createdAt: { gt: new Date(Date.now() - 36e5) }, OR: [...email ? [{ email }] : [], ...phone ? [{ phone }] : []] } });
   if (recent >= 3) throw new CommandError("Your message was already sent. Your tutor will reply soon.");
-  const q = await db.inquiry.create({ data: { profileId: profile.id, name, email, phone, studentLevel: cleanText(input.studentLevel, 80), subject: cleanText(input.subject, 120), message: cleanText(input.message, 3e3), status: "new" } });
-  void notify(prisma, { profileId: profile.id, kind: "tutor_new_inquiry", to: profile.email, subject: `New message from ${name}`, lines: [`${name} (${[email, phone].filter(Boolean).join(", ")}) asked about tutoring${q.subject ? ` in ${q.subject}` : ""}${q.studentLevel ? ` for ${q.studentLevel}` : ""}.`, q.message], link: `${origin()}/dashboard/platform/inquiries`, linkLabel: "Open inquiries" });
-  return { id: q.id, sent: true };
+  const q2 = await db.inquiry.create({ data: { profileId: profile.id, name, email, phone, studentLevel: cleanText(input.studentLevel, 80), subject: cleanText(input.subject, 120), message: cleanText(input.message, 3e3), status: "new" } });
+  void notify(prisma, { profileId: profile.id, kind: "tutor_new_inquiry", to: profile.email, subject: `New message from ${name}`, lines: [`${name} (${[email, phone].filter(Boolean).join(", ")}) asked about tutoring${q2.subject ? ` in ${q2.subject}` : ""}${q2.studentLevel ? ` for ${q2.studentLevel}` : ""}.`, q2.message], link: `${origin()}/dashboard/platform/inquiries`, linkLabel: "Open inquiries" });
+  return { id: q2.id, sent: true };
 }
 async function publicInvoice(prisma, id, token) {
   const db = guarded(prisma);
@@ -3339,12 +3612,850 @@ init_family();
 init_business();
 
 // features/keystone/mutations/tutor.ts
-var tutorTypeDefs = { query: "", mutation: "" };
-var tutorResolvers = { Query: {}, Mutation: {} };
+init_business();
+
+// features/keystone/utils/tutorOps.ts
+init_availability();
+init_booking();
+init_business();
+init_family();
+init_ledger();
+init_payments();
+
+// features/keystone/utils/setup.ts
+init_business();
+init_payments();
+var DAYS2 = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+var TYPICAL_HOURS = { sunday: null, monday: [900, 1200], tuesday: [900, 1200], wednesday: [900, 1200], thursday: [900, 1200], friday: null, saturday: [540, 780] };
+function policyText(p) {
+  const charge = (n) => n === 100 ? "charged in full" : n === 0 ? "not charged" : `charged ${n}% of the price`;
+  return [
+    `You can cancel or move a session for free up to ${p.cancellationWindowHours} hours before it starts.`,
+    `A cancellation inside ${p.cancellationWindowHours} hours is ${charge(p.lateCancelPercent)}; a missed session is ${charge(p.noShowPercent)}.`,
+    "If something serious comes up, tell me: I can excuse a late cancellation.",
+    "Package minutes are valid for 12 months from purchase."
+  ].join(" ");
+}
+async function setUpMyBusiness(prisma, userId, input) {
+  const businessName = cleanText(input.businessName, 120);
+  const slug = cleanText(input.slug, 41).toLowerCase();
+  if (!businessName) throw new CommandError("Enter your business name.");
+  if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(slug)) throw new CommandError("Page address: 2 to 41 lowercase letters, numbers or hyphens.");
+  const timezone = validTimeZone(input.timezone);
+  if (!timezone) throw new CommandError("Choose your timezone.");
+  const currencyCode = (cleanText(input.currencyCode, 3) || "USD").toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currencyCode)) throw new CommandError("Choose a currency.");
+  const rate = input.hourlyRateCents == null ? 6e3 : Math.floor(Number(input.hourlyRateCents));
+  if (!Number.isSafeInteger(rate) || rate < 0 || rate > 1e7) throw new CommandError("Enter your hourly rate.");
+  const online = input.teachesOnline !== false;
+  const inPerson = Boolean(input.teachesInPerson);
+  if (!online && !inPerson) throw new CommandError("Choose online, in person or both.");
+  const typical = input.typicalSetup !== false;
+  const subjects = (input.subjects ?? []).map((s) => cleanText(s, 80)).filter(Boolean).slice(0, 20);
+  const levels = cleanText(input.levels, 120);
+  const mode = online && inPerson ? "either" : online ? "online" : "in_person";
+  const policy = { cancellationWindowHours: 24, lateCancelPercent: 100, noShowPercent: 100 };
+  return transaction(prisma, async (tx) => {
+    if (await tx.tutorProfile.findFirst({ where: { ownerId: userId } })) throw new CommandError("Your business is already set up.");
+    if (await tx.tutorProfile.findUnique({ where: { slug } })) throw new CommandError("That page address is taken. Try another.");
+    const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true, email: true } });
+    const profile = await tx.tutorProfile.create({
+      data: {
+        ownerId: userId,
+        businessName,
+        tutorName: cleanText(input.tutorName, 120) || user.name,
+        slug,
+        timezone,
+        currencyCode,
+        country: cleanText(input.country, 2).toUpperCase(),
+        email: cleanText(input.email, 200) || user.email,
+        teachesOnline: online,
+        teachesInPerson: inPerson,
+        ...policy,
+        policiesText: typical ? policyText(policy) : "",
+        paymentInstructions: typical ? "Pay by bank transfer or your usual payment app and put your child\u2019s name as the reference. Tell me when it is sent." : ""
+      }
+    });
+    for (const [i, name] of subjects.entries()) await tx.subject.create({ data: { profileId: profile.id, name, levels, sortOrder: i } });
+    await tx.weeklyHours.createMany({
+      data: DAYS2.map((d) => {
+        const h = typical ? TYPICAL_HOURS[d] : ["monday", "tuesday", "wednesday", "thursday", "friday"].includes(d) ? [900, 1200] : null;
+        return { profileId: profile.id, dayOfWeek: d, isWorking: Boolean(h), startMinute: h?.[0] ?? 900, endMinute: h?.[1] ?? 1200 };
+      })
+    });
+    await tx.paymentProvider.create({ data: { profileId: profile.id, ...MANUAL_PROVIDER } });
+    if (stripeOn()) await tx.paymentProvider.create({ data: { profileId: profile.id, ...STRIPE_PROVIDER } });
+    if (typical) {
+      const per = (minutes) => Math.round(rate * minutes / 60);
+      const types = [
+        { name: "Free 20-minute consultation", description: "A short call to talk about goals and how I can help. No charge.", durationMinutes: 20, priceCents: 0, openToNewFamilies: true },
+        { name: "First lesson", description: "A full first lesson: I find out where the student is and we start work.", durationMinutes: 60, priceCents: per(60), openToNewFamilies: true },
+        { name: "60-minute lesson", description: "A regular lesson.", durationMinutes: 60, priceCents: per(60), openToNewFamilies: false },
+        { name: "90-minute lesson", description: "A longer lesson for exam years or bigger topics.", durationMinutes: 90, priceCents: per(90), openToNewFamilies: false },
+        { name: "Exam review session", description: "Two hours of focused review before a test or exam.", durationMinutes: 120, priceCents: per(120), openToNewFamilies: false }
+      ];
+      const subjectIds = (await tx.subject.findMany({ where: { profileId: profile.id }, select: { id: true } })).map((s) => s.id);
+      for (const [i, t] of types.entries()) await tx.sessionType.create({ data: { ...t, profileId: profile.id, mode, sortOrder: i, subjects: { connect: subjectIds.map((id) => ({ id })) } } });
+      const packs = [{ hours: 5, off: 5 }, { hours: 10, off: 10 }, { hours: 20, off: 15 }];
+      for (const [i, p] of packs.entries()) {
+        await tx.package.create({ data: { profileId: profile.id, name: `${p.hours} hours`, description: `${p.hours} hours of lessons, ${p.off}% off. Valid for 12 months.`, minutes: p.hours * 60, priceCents: Math.round(rate * p.hours * (100 - p.off) / 100), validMonths: 12, sortOrder: i } });
+      }
+    }
+    await tx.user.update({ where: { id: userId }, data: { onboardingStatus: "done" } });
+    return { profileId: profile.id, slug: profile.slug };
+  });
+}
+
+// features/keystone/utils/tutorOps.ts
+var origin2 = () => trustedOrigin();
+var fmt = (d, tz) => new Intl.DateTimeFormat("en-US", { timeZone: tz, dateStyle: "medium", timeStyle: "short" }).format(d);
+async function setUpMyBusiness2(prisma, session, input) {
+  if (!session?.itemId) throw new CommandError("Sign in first.");
+  if (!session.data.role?.canManageBusiness) throw new CommandError("Your role does not allow this.");
+  return setUpMyBusiness(prisma, session.itemId, input);
+}
+async function myBusiness(prisma, session) {
+  if (!session?.itemId) throw new CommandError("Sign in first.");
+  const p = await guarded(prisma).tutorProfile.findFirst({ where: { ownerId: session.itemId } });
+  if (!p) return { setUp: false, profile: null, stripe: stripeOn(), mail: mailConfigured() };
+  const provider = await cardProvider(guarded(prisma), p.id);
+  return iso({ setUp: true, profile: { id: p.id, slug: p.slug, businessName: p.businessName, timezone: p.timezone, currencyCode: p.currencyCode, bookingOpen: p.bookingOpen }, stripe: Boolean(provider), mail: mailConfigured(), pageUrl: `${origin2()}/t/${p.slug}` });
+}
+async function housekeeping(prisma, profileId) {
+  await releaseUnpaidHolds(prisma, profileId).catch((e) => console.error("[tutor] holds", e instanceof Error ? e.message : e));
+  await topUpAllSeries(prisma, profileId).catch((e) => console.error("[tutor] series", e instanceof Error ? e.message : e));
+  await transaction(prisma, async (tx) => {
+    await lockTutorBooking(tx, profileId);
+    await expirePurchases(tx, profileId);
+  }).catch((e) => console.error("[tutor] expiry", e instanceof Error ? e.message : e));
+}
+var tutorSessionSelect = {
+  id: true,
+  startsAt: true,
+  endsAt: true,
+  mode: true,
+  meetingUrl: true,
+  status: true,
+  funding: true,
+  paymentStatus: true,
+  typeNameSnapshot: true,
+  priceCents: true,
+  holdEndsAt: true,
+  source: true,
+  seriesId: true,
+  family: { select: { id: true, guardianName: true, phone: true, email: true } },
+  students: { select: { id: true, firstName: true, lastName: true, level: true, meetingUrl: true } }
+};
+async function today(prisma, session) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  await housekeeping(prisma, p.id);
+  const { start, end } = businessDayRange(businessDateKey(/* @__PURE__ */ new Date(), p.timezone), p.timezone);
+  const now = /* @__PURE__ */ new Date();
+  const [sessions, unclosed, reported, invoices, inquiries, reviews, handedIn, series, purchases] = await Promise.all([
+    db.session.findMany({ where: { profileId: p.id, startsAt: { gte: start, lt: end }, status: { in: ["scheduled", "pending_payment", "completed", "no_show"] } }, orderBy: { startsAt: "asc" }, select: tutorSessionSelect, take: 100 }),
+    db.session.findMany({ where: { profileId: p.id, status: "scheduled", endsAt: { lt: start } }, orderBy: { startsAt: "desc" }, select: tutorSessionSelect, take: 50 }),
+    db.payment.findMany({ where: { profileId: p.id, status: "reported" }, select: { id: true, kind: true, method: true, amountCents: true, reference: true, paidAt: true, family: { select: { id: true, guardianName: true } }, invoiceId: true, purchaseId: true, sessionId: true }, take: 50 }),
+    db.invoice.findMany({ where: { profileId: p.id, status: "sent" }, select: { id: true, number: true, dueAt: true, totalCents: true, paidCents: true, status: true, family: { select: { id: true, guardianName: true } } }, take: 200 }),
+    db.inquiry.findMany({ where: { profileId: p.id, status: "new" }, select: { id: true, name: true, subject: true, studentLevel: true, createdAt: true }, orderBy: { createdAt: "desc" }, take: 20 }),
+    db.review.count({ where: { profileId: p.id, status: "pending" } }),
+    db.homework.findMany({ where: { profileId: p.id, status: "handed_in" }, select: { id: true, title: true, handedInAt: true, student: { select: { id: true, firstName: true } } }, take: 50 }),
+    db.recurringSeries.findMany({ where: { profileId: p.id, status: "active", NOT: { skippedDates: "" } }, select: { id: true, skippedDates: true, family: { select: { guardianName: true } } }, take: 50 }),
+    db.packagePurchase.findMany({ where: { profileId: p.id, status: "active" }, select: { id: true, minutesRemaining: true, nameSnapshot: true, family: { select: { id: true, guardianName: true } } }, take: 300 })
+  ]);
+  const studentIds = [...new Set(sessions.flatMap((s) => s.students.map((x) => x.id)))];
+  const [lastNotes, due] = await Promise.all([
+    Promise.all(studentIds.map((id) => db.sessionNote.findFirst({ where: { session: { students: { some: { id } }, status: "completed" } }, orderBy: { createdAt: "desc" }, select: { workOnNext: true, createdAt: true } }).then((n) => [id, n]))),
+    db.homework.findMany({ where: { studentId: { in: studentIds }, status: { in: ["assigned", "handed_in"] } }, select: { id: true, title: true, dueAt: true, status: true, studentId: true }, take: 200 })
+  ]);
+  const notes = Object.fromEntries(lastNotes);
+  const shortest = await db.sessionType.findFirst({ where: { profileId: p.id, active: true, priceCents: { gt: 0 } }, orderBy: { durationMinutes: "asc" }, select: { durationMinutes: true } });
+  const byFamily = /* @__PURE__ */ new Map();
+  for (const x of purchases) if (x.family) {
+    const e = byFamily.get(x.family.id) ?? { familyId: x.family.id, guardianName: x.family.guardianName, minutes: 0 };
+    e.minutes += x.minutesRemaining;
+    byFamily.set(x.family.id, e);
+  }
+  const link = (s) => s.mode === "online" ? s.meetingUrl || s.students.find((x) => x.meetingUrl)?.meetingUrl || p.defaultMeetingUrl : "";
+  return iso({
+    date: businessDateKey(now, p.timezone),
+    timezone: p.timezone,
+    currencyCode: p.currencyCode,
+    sessions: sessions.map((s) => ({ ...s, joinUrl: link(s), students: s.students.map((x) => ({ ...x, lastWorkOnNext: notes[x.id]?.workOnNext ?? "", homework: due.filter((h) => h.studentId === x.id) })) })),
+    attention: {
+      sessionsNotClosed: unclosed,
+      reportedPayments: reported,
+      overdueInvoices: invoices.filter(isOverdue),
+      lowBalances: [...byFamily.values()].filter((f) => f.minutes < (shortest?.durationMinutes ?? 60)),
+      newInquiries: inquiries,
+      reviewsToApprove: reviews,
+      homeworkHandedIn: handedIn,
+      seriesNeedingTime: series.map((s) => ({ id: s.id, guardianName: s.family?.guardianName ?? "", dates: s.skippedDates.split("\n").filter((d) => d >= businessDateKey(now, p.timezone)) })).filter((s) => s.dates.length)
+    },
+    setup: { stripe: stripeOn(), mail: mailConfigured(), bookingOpen: p.bookingOpen, hasHours: await db.weeklyHours.count({ where: { profileId: p.id, isWorking: true } }) > 0, hasTypes: await db.sessionType.count({ where: { profileId: p.id, active: true } }) > 0, meetingUrl: Boolean(p.defaultMeetingUrl), pageUrl: `${origin2()}/t/${p.slug}` }
+  });
+}
+async function calendar(prisma, session, input) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  if (!isDateKey(input.from) || !isDateKey(input.to) || input.to < input.from || addDays(input.from, 62) < input.to) throw new CommandError("Choose a date range of up to 62 days.");
+  await housekeeping(prisma, p.id);
+  const start = businessDayRange(input.from, p.timezone).start;
+  const end = businessDayRange(input.to, p.timezone).end;
+  const [sessions, off, hours, series] = await Promise.all([
+    db.session.findMany({ where: { profileId: p.id, startsAt: { lt: end }, endsAt: { gt: start }, status: { notIn: ["released"] } }, orderBy: { startsAt: "asc" }, select: tutorSessionSelect, take: 1e3 }),
+    db.timeOff.findMany({ where: { profileId: p.id, startsAt: { lt: end }, endsAt: { gt: start } }, select: { id: true, startsAt: true, endsAt: true, reason: true }, take: 200 }),
+    db.weeklyHours.findMany({ where: { profileId: p.id }, select: { dayOfWeek: true, isWorking: true, startMinute: true, endMinute: true, breakStartMinute: true, breakEndMinute: true } }),
+    db.recurringSeries.findMany({ where: { profileId: p.id, status: { in: ["active", "paused"] } }, select: { id: true, status: true, dayOfWeek: true, startMinute: true, startsOn: true, endsOn: true, skippedDates: true, mode: true, family: { select: { id: true, guardianName: true } }, sessionType: { select: { id: true, name: true, durationMinutes: true } }, students: { select: { id: true, firstName: true } } }, take: 200 })
+  ]);
+  const clashes = sessions.filter((s) => ["scheduled", "pending_payment"].includes(s.status) && off.some((o) => s.startsAt < o.endsAt && o.startsAt < s.endsAt)).map((s) => s.id);
+  return iso({ from: input.from, to: input.to, timezone: p.timezone, sessions, timeOff: off, hours, series, insideTimeOff: clashes });
+}
+var ownFamily = async (db, p, id) => {
+  const f = await db.family.findFirst({ where: { id, profileId: p.id } });
+  if (!f) throw new CommandError("Choose a family.");
+  return f;
+};
+async function createSessionAsTutor(prisma, session, input) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  await ownFamily(db, p, input.familyId);
+  const r = await book(prisma, { profileId: p.id, familyId: input.familyId, sessionTypeId: input.sessionTypeId, studentIds: input.studentIds, startsAt: parseInstant(input.startsAt), actor: "tutor", mode: input.mode });
+  if (input.meetingUrl) await db.session.update({ where: { id: r.session.id }, data: { meetingUrl: cleanUrl(input.meetingUrl) } });
+  const link = bookingLink(r.session.id, r.token);
+  if (input.notify !== false) {
+    const f = await db.family.findUniqueOrThrow({ where: { id: input.familyId }, select: { email: true, guardianName: true, timezone: true } });
+    void notify(prisma, { profileId: p.id, kind: "booking_confirmed", to: f.email, subject: `Booked: ${r.session.typeNameSnapshot}`, lines: [`Hi ${f.guardianName},`, `${r.session.typeNameSnapshot} is booked for ${fmt(r.session.startsAt, f.timezone || p.timezone)}.`], link, linkLabel: "Open the booking", replyTo: p.email, sessionId: r.session.id });
+  }
+  return { sessionId: r.session.id, status: r.session.status, funding: r.session.funding, bookingUrl: link };
+}
+async function completeSession(prisma, session, input) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  const effort = input.note?.effort == null ? null : Math.floor(Number(input.note.effort));
+  if (effort !== null && !(effort >= 1 && effort <= 5)) throw new CommandError("Effort is 1 to 5.");
+  const hw = (input.homework ?? []).map((h) => ({ title: cleanText(h.title, 200), instructions: cleanText(h.instructions, 3e3), dueAt: h.dueAt ? parseInstant(h.dueAt, "Choose a due date.") : null, linkUrl: cleanUrl(h.linkUrl), studentId: h.studentId || null })).filter((h) => h.title);
+  const share2 = input.share !== false;
+  const done = await transaction(prisma, async (tx) => {
+    await lockTutorBooking(tx, p.id);
+    const s = await completeInLock(tx, input.sessionId, p.id);
+    const students = await tx.student.findMany({ where: { sessions: { some: { id: s.id } } }, select: { id: true } });
+    const n = input.note ?? {};
+    await tx.sessionNote.create({ data: { profileId: p.id, sessionId: s.id, covered: cleanText(n.covered, 5e3), wentWell: cleanText(n.wentWell, 5e3), workOnNext: cleanText(n.workOnNext, 5e3), effort, privateNote: cleanText(n.privateNote, 5e3), sharedAt: share2 ? /* @__PURE__ */ new Date() : null } });
+    for (const h of hw) {
+      const targets = h.studentId ? students.filter((x) => x.id === h.studentId) : students;
+      if (h.studentId && !targets.length) throw new CommandError("Homework must be for a student in this session.");
+      for (const t of targets) await tx.homework.create({ data: { profileId: p.id, sessionId: s.id, studentId: t.id, title: h.title, instructions: h.instructions, dueAt: h.dueAt, linkUrl: h.linkUrl } });
+    }
+    return s;
+  });
+  if (share2) {
+    const f = done.familyId ? await db.family.findUnique({ where: { id: done.familyId }, select: { email: true, guardianName: true } }) : null;
+    void notify(prisma, { profileId: p.id, kind: "note_shared", to: f?.email, subject: `Notes from today\u2019s ${done.typeNameSnapshot}`, lines: [`Hi ${f?.guardianName ?? ""},`, input.note?.covered ? `We covered: ${input.note.covered}` : "Your tutor shared notes from the session.", input.note?.workOnNext ? `To work on next: ${input.note.workOnNext}` : "", hw.length ? `Homework set: ${hw.map((h) => h.title).join(", ")}` : ""].filter(Boolean), link: `${origin2()}/account/sessions/${done.id}`, linkLabel: "Read the notes", replyTo: p.email, sessionId: done.id });
+  }
+  return { sessionId: done.id, status: "completed", homework: hw.length, shared: share2 };
+}
+async function saveSessionNote(prisma, session, input) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  const s = await db.session.findFirst({ where: { id: input.sessionId, profileId: p.id }, select: { id: true, status: true, note: { select: { id: true, sharedAt: true } } } });
+  if (!s) throw new CommandError("Session not found.");
+  const data = { covered: cleanText(input.covered, 5e3), wentWell: cleanText(input.wentWell, 5e3), workOnNext: cleanText(input.workOnNext, 5e3), effort: input.effort == null ? null : Math.max(1, Math.min(5, Math.floor(input.effort))), privateNote: cleanText(input.privateNote, 5e3), ...input.share && !s.note?.sharedAt ? { sharedAt: /* @__PURE__ */ new Date() } : {} };
+  if (s.note) await db.sessionNote.update({ where: { id: s.note.id }, data });
+  else await db.sessionNote.create({ data: { ...data, profileId: p.id, sessionId: s.id } });
+  return { sessionId: s.id };
+}
+async function markNoShow2(prisma, session, sessionId) {
+  const p = await requireTutor(guarded(prisma), session, "canManageSessions");
+  return markNoShow(prisma, sessionId, p.id);
+}
+async function cancelSessionAsTutor(prisma, session, sessionId, reason, tell) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  const r = await cancelSession(prisma, { sessionId, by: "tutor", profileId: p.id, reason: cleanText(reason, 300) || "Cancelled by your tutor" });
+  if (tell !== false) {
+    const s = await db.session.findUniqueOrThrow({ where: { id: sessionId }, select: { startsAt: true, typeNameSnapshot: true, family: { select: { email: true, guardianName: true, timezone: true } } } });
+    void notify(prisma, { profileId: p.id, kind: "session_cancelled", to: s.family?.email, subject: "Session cancelled", lines: [`Hi ${s.family?.guardianName ?? ""},`, `${s.typeNameSnapshot} on ${fmt(s.startsAt, s.family?.timezone || p.timezone)} is cancelled. You are not charged.`, reason ? `Reason: ${reason}` : ""].filter(Boolean), link: `${origin2()}/account/sessions/${sessionId}`, linkLabel: "Open the session", replyTo: p.email, sessionId });
+  }
+  return r;
+}
+async function rescheduleSessionAsTutor(prisma, session, sessionId, startsAt, tell) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  const r = await rescheduleSession(prisma, { sessionId, by: "tutor", profileId: p.id, startsAt: parseInstant(startsAt) });
+  if (tell !== false) {
+    const s = await db.session.findUniqueOrThrow({ where: { id: sessionId }, select: { startsAt: true, typeNameSnapshot: true, family: { select: { email: true, guardianName: true, timezone: true } } } });
+    void notify(prisma, { profileId: p.id, kind: "session_moved", to: s.family?.email, subject: "Session moved", lines: [`Hi ${s.family?.guardianName ?? ""},`, `${s.typeNameSnapshot} is now on ${fmt(s.startsAt, s.family?.timezone || p.timezone)}.`], link: `${origin2()}/account/sessions/${sessionId}`, linkLabel: "Open the session", replyTo: p.email, sessionId });
+  }
+  return r;
+}
+async function excuseSession2(prisma, session, sessionId) {
+  const p = await requireTutor(guarded(prisma), session, "canManageSessions");
+  return excuseSession(prisma, sessionId, p.id);
+}
+async function reopenSession2(prisma, session, sessionId) {
+  const p = await requireTutor(guarded(prisma), session, "canManageSessions");
+  return reopenSession(prisma, sessionId, p.id);
+}
+async function tutorSession(prisma, session, id) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  await settleTarget(prisma, "session", id).catch(() => null);
+  const s = await db.session.findFirst({
+    where: { id, profileId: p.id },
+    include: {
+      family: { select: { id: true, guardianName: true, email: true, phone: true, billingMode: true } },
+      students: { select: { id: true, firstName: true, lastName: true, level: true, needs: true, goals: true, meetingUrl: true } },
+      note: true,
+      homework: { select: { id: true, title: true, status: true, dueAt: true, student: { select: { firstName: true } } } },
+      creditEntries: { select: { id: true, kind: true, minutes: true, heldChange: true, note: true, createdAt: true, purchase: { select: { id: true, nameSnapshot: true } } }, orderBy: { createdAt: "asc" } },
+      payments: { select: { id: true, kind: true, method: true, status: true, amountCents: true, refundedCents: true, reference: true, paidAt: true }, orderBy: { createdAt: "asc" } },
+      paymentSessions: { select: { id: true, status: true, amountCents: true, createdAt: true, expiresAt: true }, orderBy: { createdAt: "asc" } },
+      invoiceLines: { select: { invoice: { select: { id: true, number: true, status: true } } } },
+      sessionType: { select: { id: true, name: true, durationMinutes: true } }
+    }
+  });
+  if (!s) throw new CommandError("Session not found.");
+  const { publicAccessTokenHash: _h, ...rest } = s;
+  const joinUrl = s.mode === "online" ? s.meetingUrl || s.students.find((x) => x.meetingUrl)?.meetingUrl || p.defaultMeetingUrl : "";
+  const now = Date.now();
+  return iso({
+    ...rest,
+    joinUrl,
+    timezone: p.timezone,
+    currencyCode: p.currencyCode,
+    can: {
+      complete: s.status === "scheduled" && s.startsAt.getTime() <= now,
+      noShow: s.status === "scheduled" && s.startsAt.getTime() <= now,
+      cancel: ["scheduled", "pending_payment"].includes(s.status),
+      move: ["scheduled", "pending_payment"].includes(s.status),
+      excuse: ["late_cancelled", "no_show"].includes(s.status) && now - s.startsAt.getTime() <= 30 * 864e5,
+      reopen: s.status === "completed" && Boolean(s.completedAt) && now - s.completedAt.getTime() <= 7 * 864e5,
+      recordPayment: s.funding === "card" && s.paymentStatus === "unpaid" && !["cancelled", "released", "excused"].includes(s.status)
+    }
+  });
+}
+async function sessionLink(prisma, session, id) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  const { createPublicAccessToken: createPublicAccessToken2 } = await Promise.resolve().then(() => (init_publicAccessToken(), publicAccessToken_exports));
+  const access = createPublicAccessToken2();
+  const done = await db.session.updateMany({ where: { id, profileId: p.id }, data: { publicAccessTokenHash: access.hash } });
+  if (!done.count) throw new CommandError("Session not found.");
+  return { url: bookingLink(id, access.token) };
+}
+async function saveSeries(prisma, session, input) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  await ownFamily(db, p, input.familyId);
+  const type = await db.sessionType.findFirst({ where: { id: input.sessionTypeId, profileId: p.id, active: true } });
+  if (!type) throw new CommandError("Choose a kind of session.");
+  const students = await db.student.count({ where: { id: { in: input.studentIds }, familyId: input.familyId } });
+  if (!input.studentIds.length || students !== new Set(input.studentIds).size) throw new CommandError("Choose the family\u2019s students.");
+  if (!(Number.isInteger(input.dayOfWeek) && input.dayOfWeek >= 0 && input.dayOfWeek <= 6)) throw new CommandError("Choose a day.");
+  if (!(Number.isInteger(input.startMinute) && input.startMinute >= 0 && input.startMinute + type.durationMinutes <= 1440)) throw new CommandError("Choose a start time.");
+  if (!isDateKey(input.startsOn)) throw new CommandError("Choose a start date.");
+  if (input.endsOn && (!isDateKey(input.endsOn) || input.endsOn < input.startsOn)) throw new CommandError("The end date must be after the start date.");
+  const mode = type.mode === "either" ? input.mode === "in_person" ? "in_person" : "online" : type.mode === "in_person" ? "in_person" : "online";
+  if (input.id) {
+    const old = await db.recurringSeries.findFirst({ where: { id: input.id, profileId: p.id } });
+    if (!old) throw new CommandError("Series not found.");
+    await db.recurringSeries.updateMany({ where: { id: old.id }, data: { status: "ended", endsOn: businessDateKey(/* @__PURE__ */ new Date(), p.timezone) } });
+    await cancelFutureSeriesSessions(prisma, old.id, p.id);
+  }
+  const r = await transaction(prisma, async (tx) => {
+    await lockTutorBooking(tx, p.id);
+    const s = await tx.recurringSeries.create({ data: { profileId: p.id, familyId: input.familyId, sessionTypeId: type.id, students: { connect: input.studentIds.map((id) => ({ id })) }, dayOfWeek: input.dayOfWeek, startMinute: input.startMinute, startsOn: input.startsOn, endsOn: input.endsOn ?? "", mode, status: "active" } });
+    const g = await topUpSeriesInLock(tx, s.id);
+    return { seriesId: s.id, ...g };
+  });
+  return r;
+}
+async function pauseSeries(prisma, session, id, resume) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  if (resume) {
+    const done2 = await db.recurringSeries.updateMany({ where: { id, profileId: p.id, status: "paused" }, data: { status: "active", generatedThrough: businessDateKey(/* @__PURE__ */ new Date(), p.timezone) } });
+    if (!done2.count) throw new CommandError("Only a paused series can be resumed.");
+    await transaction(prisma, async (tx) => {
+      await lockTutorBooking(tx, p.id);
+      await topUpSeriesInLock(tx, id);
+    });
+    return { id, status: "active" };
+  }
+  const done = await db.recurringSeries.updateMany({ where: { id, profileId: p.id, status: "active" }, data: { status: "paused" } });
+  if (!done.count) throw new CommandError("Only an active series can be paused.");
+  const cancelled = await cancelFutureSeriesSessions(prisma, id, p.id);
+  return { id, status: "paused", cancelled };
+}
+async function endSeries(prisma, session, id) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  const done = await db.recurringSeries.updateMany({ where: { id, profileId: p.id, status: { in: ["active", "paused"] } }, data: { status: "ended", endsOn: businessDateKey(/* @__PURE__ */ new Date(), p.timezone) } });
+  if (!done.count) throw new CommandError("This series has already ended.");
+  const cancelled = await cancelFutureSeriesSessions(prisma, id, p.id);
+  return { id, status: "ended", cancelled };
+}
+async function clearSkippedWeek(prisma, session, id, date) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  const s = await db.recurringSeries.findFirst({ where: { id, profileId: p.id }, select: { skippedDates: true } });
+  if (!s) throw new CommandError("Series not found.");
+  await db.recurringSeries.update({ where: { id }, data: { skippedDates: s.skippedDates.split("\n").filter((d) => d && d !== date).join("\n") } });
+  return { id };
+}
+async function familiesOverview(prisma, session, input) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageFamilies");
+  const q2 = cleanText(input.search, 80);
+  const families = await db.family.findMany({
+    where: { profileId: p.id, ...input.status ? { status: input.status } : {}, ...q2 ? { OR: [{ guardianName: { contains: q2, mode: "insensitive" } }, { email: { contains: q2, mode: "insensitive" } }, { phone: { contains: q2 } }, { students: { some: { firstName: { contains: q2, mode: "insensitive" } } } }] } : {} },
+    select: { id: true, guardianName: true, email: true, phone: true, status: true, billingMode: true, userId: true, students: { select: { id: true, firstName: true, level: true, status: true } } },
+    orderBy: { guardianName: "asc" },
+    take: 500
+  });
+  const ids = families.map((f) => f.id);
+  const now = /* @__PURE__ */ new Date();
+  const [purchases, invoices, unpaid, next] = await Promise.all([
+    db.packagePurchase.groupBy({ by: ["familyId"], where: { familyId: { in: ids }, status: "active" }, _sum: { minutesRemaining: true } }),
+    db.invoice.findMany({ where: { familyId: { in: ids }, status: "sent" }, select: { familyId: true, totalCents: true, paidCents: true, dueAt: true, status: true } }),
+    db.session.groupBy({ by: ["familyId"], where: { familyId: { in: ids }, funding: "card", paymentStatus: "unpaid", status: { in: ["scheduled", "completed"] } }, _sum: { priceCents: true } }),
+    db.session.findMany({ where: { familyId: { in: ids }, status: "scheduled", startsAt: { gt: now } }, orderBy: { startsAt: "asc" }, select: { familyId: true, startsAt: true }, take: 2e3 })
+  ]);
+  return iso({
+    currencyCode: p.currencyCode,
+    timezone: p.timezone,
+    families: families.map((f) => ({
+      ...f,
+      hasAccount: Boolean(f.userId),
+      userId: void 0,
+      minutesLeft: purchases.find((x) => x.familyId === f.id)?._sum.minutesRemaining ?? 0,
+      owingCents: invoices.filter((i) => i.familyId === f.id).reduce((a, i) => a + i.totalCents - i.paidCents, 0) + (unpaid.find((x) => x.familyId === f.id)?._sum.priceCents ?? 0),
+      overdue: invoices.some((i) => i.familyId === f.id && isOverdue(i)),
+      nextSession: next.find((s) => s.familyId === f.id)?.startsAt ?? null
+    }))
+  });
+}
+async function tutorFamily(prisma, session, id) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageFamilies");
+  await ownFamily(db, p, id);
+  await transaction(prisma, async (tx) => {
+    await lockTutorBooking(tx, p.id);
+    await expirePurchases(tx, p.id, id);
+  }).catch(() => null);
+  const f = await db.family.findUniqueOrThrow({
+    where: { id },
+    include: {
+      students: { orderBy: { createdAt: "asc" } },
+      sessions: { orderBy: { startsAt: "desc" }, take: 100, select: { id: true, startsAt: true, status: true, funding: true, paymentStatus: true, typeNameSnapshot: true, priceCents: true, chargedCents: true } },
+      purchases: { orderBy: { createdAt: "desc" }, include: { entries: { orderBy: { createdAt: "desc" }, take: 100, select: { id: true, kind: true, minutes: true, heldChange: true, note: true, createdAt: true, session: { select: { id: true, startsAt: true } } } } } },
+      invoices: { orderBy: { createdAt: "desc" }, select: { id: true, number: true, status: true, totalCents: true, paidCents: true, dueAt: true, issuedAt: true } },
+      payments: { orderBy: { createdAt: "desc" }, take: 100, select: { id: true, kind: true, method: true, status: true, amountCents: true, refundedCents: true, reference: true, paidAt: true, reportedByGuardian: true } },
+      series: { where: { status: { in: ["active", "paused"] } }, select: { id: true, status: true, dayOfWeek: true, startMinute: true, startsOn: true, endsOn: true, skippedDates: true, sessionType: { select: { id: true, name: true } }, students: { select: { id: true, firstName: true } } } },
+      inquiries: { select: { id: true, message: true, createdAt: true } }
+    }
+  });
+  const { inviteTokenHash, calendarTokenHash, ...rest } = f;
+  const ledger = await Promise.all(f.purchases.map((x) => checkPurchase(db, x.id)));
+  return iso({ ...rest, hasAccount: Boolean(f.userId), inviteOpen: Boolean(inviteTokenHash), currencyCode: p.currencyCode, timezone: p.timezone, purchases: f.purchases.map((x, i) => ({ ...x, ledgerOk: ledger[i].ok })), invoices: f.invoices.map((i) => ({ ...i, overdue: isOverdue(i) })) });
+}
+async function inviteFamily2(prisma, session, familyId, send) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageFamilies");
+  const r = await inviteFamily(db, p.id, familyId);
+  const url = `${origin2()}/account/claim?f=${encodeURIComponent(r.familyId)}&t=${encodeURIComponent(r.token)}`;
+  let mail = null;
+  if (send !== false) mail = await notify(prisma, { profileId: p.id, kind: "invite", to: r.email, subject: `${p.businessName}: set up your family account`, lines: [`Hi ${r.guardianName},`, "Set a password to see your sessions, notes, homework, packages and invoices in one place."], link: url, linkLabel: "Create your account", replyTo: p.email });
+  return { url, mail };
+}
+async function saveStudentAsTutor(prisma, session, input) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageFamilies");
+  await ownFamily(db, p, input.familyId);
+  const firstName = cleanText(input.firstName, 80);
+  if (!firstName) throw new CommandError("Enter the student\u2019s first name.");
+  const subjectIds = input.subjectIds ?? null;
+  if (subjectIds && await db.subject.count({ where: { id: { in: subjectIds }, profileId: p.id } }) !== new Set(subjectIds).size) throw new CommandError("Choose your own subjects.");
+  const status = ["active", "paused", "finished"].includes(input.status || "") ? input.status : void 0;
+  const data = { firstName, lastName: cleanText(input.lastName, 80), level: cleanText(input.level, 80), school: cleanText(input.school, 120), goals: cleanText(input.goals, 2e3), needs: cleanText(input.needs, 2e3), meetingUrl: cleanUrl(input.meetingUrl), birthYear: input.birthYear ?? null, ...status ? { status } : {} };
+  if (input.id) {
+    const s2 = await db.student.findFirst({ where: { id: input.id, profileId: p.id, familyId: input.familyId } });
+    if (!s2) throw new CommandError("Student not found.");
+    await db.student.update({ where: { id: s2.id }, data: { ...data, ...subjectIds ? { subjects: { set: subjectIds.map((id) => ({ id })) } } : {} } });
+    return { id: s2.id };
+  }
+  const s = await db.student.create({ data: { ...data, profileId: p.id, familyId: input.familyId, ...subjectIds ? { subjects: { connect: subjectIds.map((id) => ({ id })) } } : {} } });
+  return { id: s.id };
+}
+async function tutorStudent(prisma, session, id) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageFamilies");
+  const s = await db.student.findFirst({
+    where: { id, profileId: p.id },
+    include: {
+      family: { select: { id: true, guardianName: true } },
+      subjects: { select: { id: true, name: true } },
+      marks: { orderBy: { takenOn: "asc" } },
+      homework: { orderBy: { createdAt: "desc" }, take: 100 },
+      sessions: { orderBy: { startsAt: "desc" }, take: 100, select: { id: true, startsAt: true, status: true, typeNameSnapshot: true, note: true } }
+    }
+  });
+  if (!s) throw new CommandError("Student not found.");
+  return iso({ ...s, timezone: p.timezone });
+}
+async function convertInquiry(prisma, session, input) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageFamilies");
+  const r = await transaction(prisma, async (tx) => {
+    const q2 = await tx.inquiry.findFirst({ where: { id: input.id, profileId: p.id } });
+    if (!q2) throw new CommandError("Inquiry not found.");
+    if (q2.status === "converted" || q2.status === "closed") throw new CommandError("This inquiry is already closed.");
+    const billingMode = ["pay_as_you_book", "invoice", "flat_monthly"].includes(input.billingMode || "") ? input.billingMode : "pay_as_you_book";
+    let family = await tx.family.findFirst({ where: { profileId: p.id, OR: [...q2.email ? [{ email: { equals: q2.email, mode: "insensitive" } }] : [], ...q2.phone ? [{ phone: q2.phone }] : []] } });
+    family ??= await tx.family.create({ data: { profileId: p.id, guardianName: q2.name, email: q2.email, phone: q2.phone, status: "active", billingMode, howTheyFoundMe: "Message from the page" } });
+    const studentName = cleanText(input.studentName, 120);
+    if (studentName) {
+      const [first, ...rest] = studentName.split(/\s+/);
+      await tx.student.create({ data: { profileId: p.id, familyId: family.id, firstName: first, lastName: rest.join(" "), level: q2.studentLevel, goals: q2.message.slice(0, 1e3) } });
+    }
+    const done = await tx.inquiry.updateMany({ where: { id: q2.id, status: { in: ["new", "contacted"] } }, data: { status: "converted", familyId: family.id } });
+    if (!done.count) throw new CommandError("This inquiry was already handled.");
+    return { familyId: family.id };
+  });
+  const inv = await inviteFamily(db, p.id, r.familyId).catch(() => null);
+  return { familyId: r.familyId, inviteUrl: inv ? `${origin2()}/account/claim?f=${encodeURIComponent(inv.familyId)}&t=${encodeURIComponent(inv.token)}` : null };
+}
+async function setInquiryStatus(prisma, session, id, status) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageFamilies");
+  const next = { contacted: ["new"], closed: ["new", "contacted"], new: ["contacted"] };
+  if (!next[status]) throw new CommandError("Choose contacted or closed.");
+  const done = await db.inquiry.updateMany({ where: { id, profileId: p.id, status: { in: next[status] } }, data: { status } });
+  if (!done.count) throw new CommandError("This inquiry cannot move to that step.");
+  return { id, status };
+}
+async function reviewHomework(prisma, session, id, feedback) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  const done = await db.homework.updateMany({ where: { id, profileId: p.id, status: { in: ["assigned", "handed_in"] } }, data: { status: "reviewed", feedback: cleanText(feedback, 3e3), reviewedAt: /* @__PURE__ */ new Date() } });
+  if (!done.count) throw new CommandError("This homework is already reviewed.");
+  return { id, status: "reviewed" };
+}
+async function homeworkBoard(prisma, session) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  const rows = await db.homework.findMany({ where: { profileId: p.id, OR: [{ status: { in: ["assigned", "handed_in"] } }, { reviewedAt: { gt: new Date(Date.now() - 30 * 864e5) } }] }, select: { id: true, title: true, instructions: true, dueAt: true, linkUrl: true, file_filename: true, status: true, handedInAt: true, guardianComment: true, handInUrl: true, feedback: true, reviewedAt: true, student: { select: { id: true, firstName: true, family: { select: { guardianName: true } } } } }, orderBy: { dueAt: "asc" }, take: 500 });
+  return iso({ timezone: p.timezone, assigned: rows.filter((r) => r.status === "assigned"), handedIn: rows.filter((r) => r.status === "handed_in"), reviewed: rows.filter((r) => r.status === "reviewed") });
+}
+async function moderateReview(prisma, session, id, status) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageFamilies");
+  if (!["published", "hidden"].includes(status)) throw new CommandError("Choose publish or hide.");
+  const done = await db.review.updateMany({ where: { id, profileId: p.id }, data: { status } });
+  if (!done.count) throw new CommandError("Review not found.");
+  return { id, status };
+}
+var pay = async (prisma, session) => requireTutor(guarded(prisma), session, "canManagePayments");
+async function sellPackage2(prisma, session, input) {
+  const p = await pay(prisma, session);
+  return sellPackage(prisma, p.id, input);
+}
+async function cancelPurchase2(prisma, session, id) {
+  const p = await pay(prisma, session);
+  return cancelPurchase(prisma, p.id, id);
+}
+async function refundPackage2(prisma, session, id) {
+  const p = await pay(prisma, session);
+  return refundPackage(prisma, p.id, id);
+}
+async function adjustMinutes2(prisma, session, input) {
+  const p = await pay(prisma, session);
+  return transaction(prisma, async (tx) => {
+    await lockTutorBooking(tx, p.id);
+    const x = await tx.packagePurchase.findFirst({ where: { id: input.purchaseId, profileId: p.id } });
+    if (!x) throw new CommandError("Package not found.");
+    await adjustMinutes(tx, x, Math.trunc(Number(input.minutes)), cleanText(input.reason, 300));
+    return { purchaseId: x.id };
+  });
+}
+async function confirmPayment2(prisma, session, id) {
+  const p = await pay(prisma, session);
+  return confirmPayment(prisma, p.id, id);
+}
+async function rejectPayment2(prisma, session, id, note) {
+  const p = await pay(prisma, session);
+  return rejectPayment(prisma, p.id, id, note ?? "");
+}
+async function recordPayment2(prisma, session, input) {
+  const p = await pay(prisma, session);
+  if (!["session", "package", "invoice"].includes(input.target)) throw new CommandError("Choose what the payment is for.");
+  return recordPayment(prisma, p.id, { target: { kind: input.target, id: input.targetId }, amountCents: input.amountCents, method: input.method, reference: input.reference });
+}
+async function refundPayment2(prisma, session, id, amountCents, note) {
+  const p = await pay(prisma, session);
+  const own = await guarded(prisma).payment.count({ where: { id, profileId: p.id } });
+  if (!own) throw new CommandError("Payment not found.");
+  return refundPaymentRow(prisma, id, amountCents ?? null, cleanText(note, 300) || "Refunded by your tutor");
+}
+async function readyToInvoice2(prisma, session) {
+  const p = await pay(prisma, session);
+  return iso({ currencyCode: p.currencyCode, families: await readyToInvoice(guarded(prisma), p.id) });
+}
+async function createInvoice2(prisma, session, input) {
+  const p = await pay(prisma, session);
+  const r = await createInvoice(prisma, p.id, input);
+  return { id: r.id, number: r.number };
+}
+async function addInvoiceLine2(prisma, session, invoiceId, line) {
+  const p = await pay(prisma, session);
+  return addInvoiceLine(prisma, p.id, invoiceId, { ...line, quantity: line.quantity ?? 1 });
+}
+async function removeInvoiceLine2(prisma, session, lineId) {
+  const p = await pay(prisma, session);
+  return removeInvoiceLine(prisma, p.id, lineId);
+}
+async function sendInvoice2(prisma, session, id, send) {
+  const p = await pay(prisma, session);
+  const inv = await sendInvoice(prisma, p.id, id);
+  const url = invoiceLink(inv.id, inv.token);
+  let mail = null;
+  if (send !== false) {
+    const f = inv.familyId ? await guarded(prisma).family.findUnique({ where: { id: inv.familyId }, select: { email: true, guardianName: true } }) : null;
+    mail = await notify(prisma, { profileId: p.id, kind: "invoice_sent", to: f?.email, subject: `Invoice ${inv.number} from ${p.businessName}`, lines: [`Hi ${f?.guardianName ?? ""},`, `Invoice ${inv.number} for ${(inv.totalCents / 100).toFixed(2)} ${p.currencyCode} is ready.`], link: url, linkLabel: "View and pay", replyTo: p.email, invoiceId: inv.id });
+  }
+  return { id: inv.id, number: inv.number, url, mail };
+}
+async function invoiceLinkFor(prisma, session, id) {
+  const p = await pay(prisma, session);
+  const { createPublicAccessToken: createPublicAccessToken2 } = await Promise.resolve().then(() => (init_publicAccessToken(), publicAccessToken_exports));
+  const access = createPublicAccessToken2();
+  const done = await guarded(prisma).invoice.updateMany({ where: { id, profileId: p.id, status: { in: ["sent", "paid"] } }, data: { publicAccessTokenHash: access.hash } });
+  if (!done.count) throw new CommandError("Send the invoice first.");
+  return { url: invoiceLink(id, access.token) };
+}
+async function voidInvoice2(prisma, session, id) {
+  const p = await pay(prisma, session);
+  return voidInvoice(prisma, p.id, id);
+}
+async function tutorInvoice(prisma, session, id) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canReadPayments").catch(() => requireTutor(db, session, "canManagePayments"));
+  await settleTarget(prisma, "invoice", id).catch(() => null);
+  const inv = await db.invoice.findFirst({ where: { id, profileId: p.id }, include: { family: { select: { id: true, guardianName: true, email: true } }, lines: { orderBy: { sortOrder: "asc" }, include: { session: { select: { id: true, startsAt: true, status: true } } } }, payments: { orderBy: { createdAt: "asc" } } } });
+  if (!inv) throw new CommandError("Invoice not found.");
+  const { publicAccessTokenHash: _h, ...rest } = inv;
+  return iso({ ...rest, overdue: isOverdue(inv), currencyCode: p.currencyCode, timezone: p.timezone });
+}
+async function myEarnings(prisma, session, input) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canViewEarnings");
+  const from = new Date(input.from);
+  const to = new Date(input.to);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to <= from) throw new CommandError("Choose a valid date range.");
+  const paid = { profileId: p.id, status: { in: ["confirmed", "refunded", "partially_refunded"] }, paidAt: { gte: from, lt: to } };
+  const [ins, refunds, byMethod, payments, taught, sold, prepaid, owed, expenses, expByCat] = await Promise.all([
+    db.payment.aggregate({ where: { ...paid, kind: { not: "refund" } }, _sum: { amountCents: true } }),
+    db.payment.aggregate({ where: { profileId: p.id, kind: "refund", status: "confirmed", paidAt: { gte: from, lt: to } }, _sum: { amountCents: true } }),
+    db.payment.groupBy({ by: ["method"], where: { ...paid, kind: { not: "refund" } }, _sum: { amountCents: true } }),
+    db.payment.findMany({ where: { ...paid, kind: { not: "refund" } }, select: { amountCents: true, paidAt: true }, take: 1e4 }),
+    db.session.findMany({ where: { profileId: p.id, status: "completed", startsAt: { gte: from, lt: to } }, select: { startsAt: true, endsAt: true }, take: 1e4 }),
+    db.packagePurchase.aggregate({ where: { profileId: p.id, purchasedAt: { gte: from, lt: to }, status: { notIn: ["awaiting_payment", "cancelled"] } }, _count: { _all: true }, _sum: { pricePaidCents: true } }),
+    db.packagePurchase.findMany({ where: { profileId: p.id, status: "active" }, select: { minutesRemaining: true, minutesGranted: true, pricePaidCents: true } }),
+    db.invoice.findMany({ where: { profileId: p.id, status: "sent" }, select: { totalCents: true, paidCents: true } }),
+    db.expense.aggregate({ where: { profileId: p.id, spentOn: { gte: from, lt: to } }, _sum: { amountCents: true } }),
+    db.expense.groupBy({ by: ["category"], where: { profileId: p.id, spentOn: { gte: from, lt: to } }, _sum: { amountCents: true } })
+  ]);
+  const month = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: p.timezone, year: "numeric", month: "2-digit" }).format(d).slice(0, 7);
+  const byMonth = {};
+  for (const x of payments) if (x.paidAt) byMonth[month(x.paidAt)] = (byMonth[month(x.paidAt)] ?? 0) + x.amountCents;
+  const inCents = (ins._sum.amountCents ?? 0) - (refunds._sum.amountCents ?? 0);
+  const exp = expenses._sum.amountCents ?? 0;
+  return iso({
+    from: from.toISOString(),
+    to: to.toISOString(),
+    currencyCode: p.currencyCode,
+    inCents,
+    refundsCents: refunds._sum.amountCents ?? 0,
+    byMethod: byMethod.map((r) => ({ method: r.method, cents: r._sum.amountCents ?? 0 })),
+    byMonth: Object.entries(byMonth).sort().map(([m, cents]) => ({ month: m, cents })),
+    sessionsTaught: taught.length,
+    hoursTaught: Math.round(taught.reduce((a, s) => a + (s.endsAt.getTime() - s.startsAt.getTime()) / 36e5, 0) * 10) / 10,
+    packagesSold: sold._count._all,
+    packagesSoldCents: sold._sum.pricePaidCents ?? 0,
+    prepaidMinutes: prepaid.reduce((a, x) => a + x.minutesRemaining, 0),
+    prepaidUnearnedCents: prepaid.reduce((a, x) => a + (x.minutesGranted ? Math.floor(x.pricePaidCents * x.minutesRemaining / x.minutesGranted) : 0), 0),
+    outstandingCents: owed.reduce((a, i) => a + i.totalCents - i.paidCents, 0),
+    expensesCents: exp,
+    expensesByCategory: expByCat.map((r) => ({ category: r.category, cents: r._sum.amountCents ?? 0 })),
+    netCents: inCents - exp
+  });
+}
+async function paymentSettings(prisma, session) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManagePayments");
+  let stripe2 = { connected: false };
+  if (stripeOn()) {
+    try {
+      const res = await fetch("https://api.stripe.com/v1/balance", { headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` }, redirect: "error" });
+      const json3 = await res.json();
+      stripe2 = res.ok ? { connected: true, mode: json3.livemode ? "live" : "test keys" } : { connected: false, error: json3.error?.message || `Stripe answered ${res.status}` };
+      if (res.ok) await cardProvider(db, p.id);
+    } catch (e) {
+      stripe2 = { connected: false, error: e instanceof Error ? e.message : "Stripe could not be reached" };
+    }
+  }
+  return { stripe: stripe2, webhookUrl: `${origin2()}/api/payment-webhooks/stripe`, webhookSecretSet: Boolean(process.env.STRIPE_WEBHOOK_SECRET), paymentInstructions: p.paymentInstructions, invoiceDueDays: p.invoiceDueDays, currencyCode: p.currencyCode, mail: mailConfigured() };
+}
+async function tutorCalendarFeedUrl(prisma, session) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canManageSessions");
+  const token = await calendarFeedToken(db, { kind: "tutor", id: p.id });
+  return { url: `${origin2()}/api/calendar/${token}.ics`, webcalUrl: `${origin2().replace(/^https?/, "webcal")}/api/calendar/${token}.ics` };
+}
+async function exportCsv(prisma, session, input) {
+  const db = guarded(prisma);
+  const p = await requireTutor(db, session, "canViewEarnings");
+  const from = new Date(input.from);
+  const to = new Date(input.to);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) throw new CommandError("Choose a valid date range.");
+  const q2 = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  if (input.kind === "sessions") {
+    const rows2 = await db.session.findMany({ where: { profileId: p.id, startsAt: { gte: from, lt: to } }, select: { startsAt: true, typeNameSnapshot: true, status: true, funding: true, priceCents: true, chargedCents: true, chargedMinutes: true, paymentStatus: true, family: { select: { guardianName: true } } }, orderBy: { startsAt: "asc" }, take: 2e4 });
+    return { filename: "sessions.csv", csv: ["date,family,session,status,funding,price,charged,charged_minutes,payment", ...rows2.map((r) => [r.startsAt.toISOString(), r.family?.guardianName, r.typeNameSnapshot, r.status, r.funding, (r.priceCents / 100).toFixed(2), (r.chargedCents / 100).toFixed(2), r.chargedMinutes, r.paymentStatus].map(q2).join(","))].join("\n") };
+  }
+  const rows = await db.payment.findMany({ where: { profileId: p.id, paidAt: { gte: from, lt: to } }, select: { paidAt: true, kind: true, method: true, status: true, amountCents: true, refundedCents: true, reference: true, family: { select: { guardianName: true } } }, orderBy: { paidAt: "asc" }, take: 2e4 });
+  return { filename: "payments.csv", csv: ["date,family,kind,method,status,amount,refunded,reference", ...rows.map((r) => [r.paidAt?.toISOString(), r.family?.guardianName, r.kind, r.method, r.status, (r.amountCents / 100).toFixed(2), (r.refundedCents / 100).toFixed(2), r.reference].map(q2).join(","))].join("\n") };
+}
+
+// features/keystone/mutations/tutor.ts
+var run = async (work) => {
+  try {
+    return ok(await work());
+  } catch (error) {
+    if (!(error instanceof CommandError)) console.error("[tutor] command failed", error instanceof Error ? error.stack || error.message : "unknown");
+    return fail(error);
+  }
+};
+var tutorTypeDefs = {
+  query: `
+    myBusiness: CommandResult!
+    today: CommandResult!
+    calendar(from: String!, to: String!): CommandResult!
+    tutorSession(id: ID!): CommandResult!
+    familiesOverview(status: String, search: String): CommandResult!
+    tutorFamily(id: ID!): CommandResult!
+    tutorStudent(id: ID!): CommandResult!
+    homeworkBoard: CommandResult!
+    readyToInvoice: CommandResult!
+    tutorInvoice(id: ID!): CommandResult!
+    myEarnings(from: String!, to: String!): CommandResult!
+    paymentSettings: CommandResult!
+    tutorCalendarFeedUrl: CommandResult!
+    exportCsv(kind: String!, from: String!, to: String!): CommandResult!
+  `,
+  mutation: `
+    setUpMyBusiness(businessName: String!, tutorName: String, slug: String!, timezone: String!, currencyCode: String, country: String, subjects: [String!], levels: String, teachesOnline: Boolean, teachesInPerson: Boolean, hourlyRateCents: Int, typicalSetup: Boolean, email: String): CommandResult!
+    createSessionAsTutor(familyId: ID!, sessionTypeId: ID!, startsAt: String!, studentIds: [ID!]!, mode: String, meetingUrl: String, notify: Boolean): CommandResult!
+    completeSession(sessionId: ID!, note: SessionNoteInput, homework: [HomeworkInput!], share: Boolean): CommandResult!
+    saveSessionNote(sessionId: ID!, covered: String, wentWell: String, workOnNext: String, effort: Int, privateNote: String, share: Boolean): CommandResult!
+    markNoShow(sessionId: ID!): CommandResult!
+    cancelSessionAsTutor(sessionId: ID!, reason: String, notify: Boolean): CommandResult!
+    rescheduleSessionAsTutor(sessionId: ID!, startsAt: String!, notify: Boolean): CommandResult!
+    excuseSession(sessionId: ID!): CommandResult!
+    reopenSession(sessionId: ID!): CommandResult!
+    sessionLink(sessionId: ID!): CommandResult!
+    saveSeries(id: ID, familyId: ID!, sessionTypeId: ID!, studentIds: [ID!]!, dayOfWeek: Int!, startMinute: Int!, startsOn: String!, endsOn: String, mode: String): CommandResult!
+    pauseSeries(id: ID!, resume: Boolean): CommandResult!
+    endSeries(id: ID!): CommandResult!
+    clearSkippedWeek(id: ID!, date: String!): CommandResult!
+    inviteFamily(familyId: ID!, send: Boolean): CommandResult!
+    saveStudentAsTutor(student: TutorStudentInput!): CommandResult!
+    convertInquiry(id: ID!, studentName: String, billingMode: String): CommandResult!
+    setInquiryStatus(id: ID!, status: String!): CommandResult!
+    reviewHomework(id: ID!, feedback: String): CommandResult!
+    moderateReview(id: ID!, status: String!): CommandResult!
+    sellPackage(familyId: ID!, packageId: ID!, method: String!, reference: String): CommandResult!
+    cancelPackagePurchase(purchaseId: ID!): CommandResult!
+    refundPackage(purchaseId: ID!): CommandResult!
+    adjustMinutes(purchaseId: ID!, minutes: Int!, reason: String!): CommandResult!
+    confirmPayment(paymentId: ID!): CommandResult!
+    rejectPayment(paymentId: ID!, note: String): CommandResult!
+    recordPayment(target: String!, targetId: ID!, amountCents: Int, method: String!, reference: String): CommandResult!
+    refundPayment(paymentId: ID!, amountCents: Int, note: String): CommandResult!
+    draftInvoice(familyId: ID!, sessionIds: [ID!], includeFlatFee: Boolean, extraLines: [InvoiceLineInput!], dueDays: Int, note: String): CommandResult!
+    addInvoiceLine(invoiceId: ID!, line: InvoiceLineInput!): CommandResult!
+    removeInvoiceLine(lineId: ID!): CommandResult!
+    sendInvoice(invoiceId: ID!, send: Boolean): CommandResult!
+    invoiceLink(invoiceId: ID!): CommandResult!
+    voidInvoice(invoiceId: ID!): CommandResult!
+  `,
+  inputs: `
+    input SessionNoteInput { covered: String, wentWell: String, workOnNext: String, effort: Int, privateNote: String }
+    input HomeworkInput { title: String!, instructions: String, dueAt: String, linkUrl: String, studentId: ID }
+    input InvoiceLineInput { description: String!, quantity: Int, unitCents: Int! }
+    input TutorStudentInput { id: ID, familyId: ID!, firstName: String!, lastName: String, level: String, school: String, goals: String, needs: String, meetingUrl: String, birthYear: Int, status: String, subjectIds: [ID!] }
+  `
+};
+var q = (fn) => (_r, a, c) => run(() => fn(c, a));
+var tutorResolvers = {
+  Query: {
+    myBusiness: q((c) => myBusiness(c.prisma, c.session)),
+    today: q((c) => today(c.prisma, c.session)),
+    calendar: q((c, a) => calendar(c.prisma, c.session, a)),
+    tutorSession: q((c, a) => tutorSession(c.prisma, c.session, a.id)),
+    familiesOverview: q((c, a) => familiesOverview(c.prisma, c.session, a)),
+    tutorFamily: q((c, a) => tutorFamily(c.prisma, c.session, a.id)),
+    tutorStudent: q((c, a) => tutorStudent(c.prisma, c.session, a.id)),
+    homeworkBoard: q((c) => homeworkBoard(c.prisma, c.session)),
+    readyToInvoice: q((c) => readyToInvoice2(c.prisma, c.session)),
+    tutorInvoice: q((c, a) => tutorInvoice(c.prisma, c.session, a.id)),
+    myEarnings: q((c, a) => myEarnings(c.prisma, c.session, a)),
+    paymentSettings: q((c) => paymentSettings(c.prisma, c.session)),
+    tutorCalendarFeedUrl: q((c) => tutorCalendarFeedUrl(c.prisma, c.session)),
+    exportCsv: q((c, a) => exportCsv(c.prisma, c.session, a))
+  },
+  Mutation: {
+    setUpMyBusiness: q((c, a) => setUpMyBusiness2(c.prisma, c.session, a)),
+    createSessionAsTutor: q((c, a) => createSessionAsTutor(c.prisma, c.session, a)),
+    completeSession: q((c, a) => completeSession(c.prisma, c.session, a)),
+    saveSessionNote: q((c, a) => saveSessionNote(c.prisma, c.session, a)),
+    markNoShow: q((c, a) => markNoShow2(c.prisma, c.session, a.sessionId)),
+    cancelSessionAsTutor: q((c, a) => cancelSessionAsTutor(c.prisma, c.session, a.sessionId, a.reason, a.notify)),
+    rescheduleSessionAsTutor: q((c, a) => rescheduleSessionAsTutor(c.prisma, c.session, a.sessionId, a.startsAt, a.notify)),
+    excuseSession: q((c, a) => excuseSession2(c.prisma, c.session, a.sessionId)),
+    reopenSession: q((c, a) => reopenSession2(c.prisma, c.session, a.sessionId)),
+    sessionLink: q((c, a) => sessionLink(c.prisma, c.session, a.sessionId)),
+    saveSeries: q((c, a) => saveSeries(c.prisma, c.session, a)),
+    pauseSeries: q((c, a) => pauseSeries(c.prisma, c.session, a.id, a.resume)),
+    endSeries: q((c, a) => endSeries(c.prisma, c.session, a.id)),
+    clearSkippedWeek: q((c, a) => clearSkippedWeek(c.prisma, c.session, a.id, a.date)),
+    inviteFamily: q((c, a) => inviteFamily2(c.prisma, c.session, a.familyId, a.send)),
+    saveStudentAsTutor: q((c, a) => saveStudentAsTutor(c.prisma, c.session, a.student)),
+    convertInquiry: q((c, a) => convertInquiry(c.prisma, c.session, a)),
+    setInquiryStatus: q((c, a) => setInquiryStatus(c.prisma, c.session, a.id, a.status)),
+    reviewHomework: q((c, a) => reviewHomework(c.prisma, c.session, a.id, a.feedback)),
+    moderateReview: q((c, a) => moderateReview(c.prisma, c.session, a.id, a.status)),
+    sellPackage: q((c, a) => sellPackage2(c.prisma, c.session, a)),
+    cancelPackagePurchase: q((c, a) => cancelPurchase2(c.prisma, c.session, a.purchaseId)),
+    refundPackage: q((c, a) => refundPackage2(c.prisma, c.session, a.purchaseId)),
+    adjustMinutes: q((c, a) => adjustMinutes2(c.prisma, c.session, a)),
+    confirmPayment: q((c, a) => confirmPayment2(c.prisma, c.session, a.paymentId)),
+    rejectPayment: q((c, a) => rejectPayment2(c.prisma, c.session, a.paymentId, a.note)),
+    recordPayment: q((c, a) => recordPayment2(c.prisma, c.session, a)),
+    refundPayment: q((c, a) => refundPayment2(c.prisma, c.session, a.paymentId, a.amountCents, a.note)),
+    draftInvoice: q((c, a) => createInvoice2(c.prisma, c.session, a)),
+    addInvoiceLine: q((c, a) => addInvoiceLine2(c.prisma, c.session, a.invoiceId, a.line)),
+    removeInvoiceLine: q((c, a) => removeInvoiceLine2(c.prisma, c.session, a.lineId)),
+    sendInvoice: q((c, a) => sendInvoice2(c.prisma, c.session, a.invoiceId, a.send)),
+    invoiceLink: q((c, a) => invoiceLinkFor(c.prisma, c.session, a.invoiceId)),
+    voidInvoice: q((c, a) => voidInvoice2(c.prisma, c.session, a.invoiceId))
+  }
+};
 
 // features/keystone/mutations/index.ts
 var graphql = String.raw;
-var run = async (work) => {
+var run2 = async (work) => {
   try {
     return ok(await work());
   } catch (error) {
@@ -3359,6 +4470,7 @@ function extendGraphqlSchema(baseSchema) {
       type CommandResult { success: Boolean!, error: String, data: JSON }
       input VisitorInput { guardianName: String!, email: String, phone: String, studentName: String!, studentLevel: String, message: String, timezone: String }
       input StudentInput { id: ID, firstName: String!, lastName: String, level: String, school: String, goals: String, birthYear: Int }
+      ${tutorTypeDefs.inputs}
       input ContactInput { guardianName: String, phone: String, secondContactName: String, secondContactPhone: String, address: String, timezone: String }
 
       type Query {
@@ -3413,47 +4525,47 @@ function extendGraphqlSchema(baseSchema) {
         redirectToInit: redirectToInit_default,
         publicTutor: (_r, a, c) => publicTutor(c.prisma, a.slug),
         homeTutor: (_r, _a, c) => homeTutor(c.prisma),
-        publicSlots: (_r, a, c) => run(() => publicSlots(c.prisma, a, c.session)),
-        publicOpenDays: (_r, a, c) => run(() => publicOpenDays(c.prisma, a)),
-        publicBooking: (_r, a, c) => run(() => publicBooking(c.prisma, a.id, a.token)),
-        publicInvoice: (_r, a, c) => run(() => publicInvoice(c.prisma, a.id, a.token)),
-        myFamily: (_r, _a, c) => run(() => myFamily(c.prisma, c.session)),
-        mySessions: (_r, a, c) => run(() => mySessions(c.prisma, c.session, a.range)),
-        mySession: (_r, a, c) => run(() => mySession(c.prisma, c.session, a.id)),
-        myStudents: (_r, _a, c) => run(() => myStudents(c.prisma, c.session)),
-        myHomework: (_r, a, c) => run(() => myHomework(c.prisma, c.session, a.status)),
-        myPackages: (_r, _a, c) => run(() => myPackages(c.prisma, c.session)),
-        myInvoices: (_r, _a, c) => run(() => myInvoices(c.prisma, c.session)),
-        myInvoice: (_r, a, c) => run(() => myInvoice(c.prisma, c.session, a.id)),
-        myResources: (_r, _a, c) => run(() => myResources(c.prisma, c.session)),
-        myProgress: (_r, a, c) => run(() => myProgress(c.prisma, c.session, a.studentId)),
-        myCalendarFeedUrl: (_r, _a, c) => run(() => myCalendarFeedUrl(c.prisma, c.session)),
+        publicSlots: (_r, a, c) => run2(() => publicSlots(c.prisma, a, c.session)),
+        publicOpenDays: (_r, a, c) => run2(() => publicOpenDays(c.prisma, a)),
+        publicBooking: (_r, a, c) => run2(() => publicBooking(c.prisma, a.id, a.token)),
+        publicInvoice: (_r, a, c) => run2(() => publicInvoice(c.prisma, a.id, a.token)),
+        myFamily: (_r, _a, c) => run2(() => myFamily(c.prisma, c.session)),
+        mySessions: (_r, a, c) => run2(() => mySessions(c.prisma, c.session, a.range)),
+        mySession: (_r, a, c) => run2(() => mySession(c.prisma, c.session, a.id)),
+        myStudents: (_r, _a, c) => run2(() => myStudents(c.prisma, c.session)),
+        myHomework: (_r, a, c) => run2(() => myHomework(c.prisma, c.session, a.status)),
+        myPackages: (_r, _a, c) => run2(() => myPackages(c.prisma, c.session)),
+        myInvoices: (_r, _a, c) => run2(() => myInvoices(c.prisma, c.session)),
+        myInvoice: (_r, a, c) => run2(() => myInvoice(c.prisma, c.session, a.id)),
+        myResources: (_r, _a, c) => run2(() => myResources(c.prisma, c.session)),
+        myProgress: (_r, a, c) => run2(() => myProgress(c.prisma, c.session, a.studentId)),
+        myCalendarFeedUrl: (_r, _a, c) => run2(() => myCalendarFeedUrl(c.prisma, c.session)),
         ...tutorResolvers.Query
       },
       Mutation: {
-        bookFirstSession: (_r, a, c) => run(() => bookFirstSession(c.prisma, { slug: a.slug, sessionTypeId: a.sessionTypeId, startsAt: a.startsAt, mode: a.mode, ...a.visitor })),
-        payForBooking: (_r, a, c) => run(() => payForBooking(c.prisma, a.id, a.token)),
-        confirmBookingPayment: (_r, a, c) => run(() => confirmBookingPayment(c.prisma, a.id, a.token)),
-        cancelMyBooking: (_r, a, c) => run(() => cancelMyBooking(c.prisma, a.id, a.token, a.reason)),
-        rescheduleMyBooking: (_r, a, c) => run(() => rescheduleMyBooking(c.prisma, a.id, a.token, a.startsAt)),
-        sendInquiry: (_r, a, c) => run(() => sendInquiry(c.prisma, a)),
+        bookFirstSession: (_r, a, c) => run2(() => bookFirstSession(c.prisma, { slug: a.slug, sessionTypeId: a.sessionTypeId, startsAt: a.startsAt, mode: a.mode, ...a.visitor })),
+        payForBooking: (_r, a, c) => run2(() => payForBooking(c.prisma, a.id, a.token)),
+        confirmBookingPayment: (_r, a, c) => run2(() => confirmBookingPayment(c.prisma, a.id, a.token)),
+        cancelMyBooking: (_r, a, c) => run2(() => cancelMyBooking(c.prisma, a.id, a.token, a.reason)),
+        rescheduleMyBooking: (_r, a, c) => run2(() => rescheduleMyBooking(c.prisma, a.id, a.token, a.startsAt)),
+        sendInquiry: (_r, a, c) => run2(() => sendInquiry(c.prisma, a)),
         // The token is the authority; Keystone's sudo db API creates the user so the password field hashes it.
-        claimFamilyAccount: (_r, a, c) => run(() => claimFamilyAccount(c.prisma, c, a)),
-        payInvoiceByLink: (_r, a, c) => run(() => payInvoiceByToken(c.prisma, a.id, a.token)),
-        bookSession: (_r, a, c) => run(() => bookSession(c.prisma, c.session, a)),
-        cancelSession: (_r, a, c) => run(() => cancelMySession(c.prisma, c.session, a.id, a.reason)),
-        rescheduleSession: (_r, a, c) => run(() => rescheduleMySession(c.prisma, c.session, a.id, a.startsAt)),
-        payForSession: (_r, a, c) => run(() => payForSession(c.prisma, c.session, a.id)),
-        confirmSessionPayment: (_r, a, c) => run(() => confirmSessionPayment(c.prisma, c.session, a.id)),
-        saveStudent: (_r, a, c) => run(async () => saveStudent(guarded(c.prisma), await requireFamily(guarded(c.prisma), c.session), a.student)),
-        handInHomework: (_r, a, c) => run(async () => handInHomework(guarded(c.prisma), (await requireFamily(guarded(c.prisma), c.session)).id, a)),
-        buyPackage: (_r, a, c) => run(() => buyPackage(c.prisma, c.session, a.packageId, a.method)),
-        confirmPackagePayment: (_r, a, c) => run(() => confirmPackagePayment(c.prisma, c.session, a.purchaseId)),
-        payInvoice: (_r, a, c) => run(() => payInvoice(c.prisma, c.session, a.id)),
-        confirmInvoicePayment: (_r, a, c) => run(() => confirmInvoicePayment(c.prisma, c.session, a.id, a.token)),
-        reportPayment: (_r, a, c) => run(() => reportPayment2(c.prisma, c.session, a)),
-        submitReview: (_r, a, c) => run(async () => submitReview(c.prisma, await requireFamily(guarded(c.prisma), c.session), a)),
-        updateMyContact: (_r, a, c) => run(async () => updateMyContact(guarded(c.prisma), (await requireFamily(guarded(c.prisma), c.session)).id, a.contact)),
+        claimFamilyAccount: (_r, a, c) => run2(() => claimFamilyAccount(c.prisma, c, a)),
+        payInvoiceByLink: (_r, a, c) => run2(() => payInvoiceByToken(c.prisma, a.id, a.token)),
+        bookSession: (_r, a, c) => run2(() => bookSession(c.prisma, c.session, a)),
+        cancelSession: (_r, a, c) => run2(() => cancelMySession(c.prisma, c.session, a.id, a.reason)),
+        rescheduleSession: (_r, a, c) => run2(() => rescheduleMySession(c.prisma, c.session, a.id, a.startsAt)),
+        payForSession: (_r, a, c) => run2(() => payForSession(c.prisma, c.session, a.id)),
+        confirmSessionPayment: (_r, a, c) => run2(() => confirmSessionPayment(c.prisma, c.session, a.id)),
+        saveStudent: (_r, a, c) => run2(async () => saveStudent(guarded(c.prisma), await requireFamily(guarded(c.prisma), c.session), a.student)),
+        handInHomework: (_r, a, c) => run2(async () => handInHomework(guarded(c.prisma), (await requireFamily(guarded(c.prisma), c.session)).id, a)),
+        buyPackage: (_r, a, c) => run2(() => buyPackage(c.prisma, c.session, a.packageId, a.method)),
+        confirmPackagePayment: (_r, a, c) => run2(() => confirmPackagePayment(c.prisma, c.session, a.purchaseId)),
+        payInvoice: (_r, a, c) => run2(() => payInvoice(c.prisma, c.session, a.id)),
+        confirmInvoicePayment: (_r, a, c) => run2(() => confirmInvoicePayment(c.prisma, c.session, a.id, a.token)),
+        reportPayment: (_r, a, c) => run2(() => reportPayment2(c.prisma, c.session, a)),
+        submitReview: (_r, a, c) => run2(async () => submitReview(c.prisma, await requireFamily(guarded(c.prisma), c.session), a)),
+        updateMyContact: (_r, a, c) => run2(async () => updateMyContact(guarded(c.prisma), (await requireFamily(guarded(c.prisma), c.session)).id, a.contact)),
         ...tutorResolvers.Mutation
       }
     }
@@ -3580,7 +4692,8 @@ function fileStorage(env = process.env) {
     kind: "local",
     type: "file",
     storagePath: uploadDir(env),
-    generateUrl: (file2) => `/api/files${file2}`,
+    // Not a public path: the guarded route above serves the bytes.
+    generateUrl: (file2) => `/api/files/stored${file2}`,
     serverRoute: null
   };
 }

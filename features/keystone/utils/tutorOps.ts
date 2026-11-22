@@ -4,7 +4,7 @@ import type { Session } from '../access'
 import { trustedOrigin } from '../../shared/trusted-origin'
 import { addDays, businessDateKey, businessDayRange, isDateKey } from './availability'
 import * as billing from './billing'
-import { book, cancelFutureSeriesSessions, cancelSession, completeInLock, excuseSession as excuse, markNoShow as noShow, releaseUnpaidHolds, reopenSession as reopen, rescheduleSession, topUpAllSeries, topUpSeriesInLock } from './booking'
+import { book, cancelFutureSeriesSessions, cancelSession, completeInLock, excuseSession as excuse, markNoShow as noShow, releaseUnpaidHolds, reopenSession as reopen, rescheduleSession, topUpAllSeries, topUpSeries } from './booking'
 import { CommandError, cleanText, cleanUrl, guarded, lockTutorBooking, parseInstant, requireTutor, transaction, type Db } from './business'
 import { calendarFeedToken, inviteFamily as invite } from './family'
 import { adjustMinutes as adjust, checkPurchase, expirePurchases } from './ledger'
@@ -285,13 +285,9 @@ export async function saveSeries(prisma: PrismaClient, session: Session | undefi
     await db.recurringSeries.updateMany({ where: { id: old.id }, data: { status: 'ended', endsOn: businessDateKey(new Date(), p.timezone) } })
     await cancelFutureSeriesSessions(prisma, old.id, p.id)
   }
-  const r = await transaction(prisma, async (tx) => {
-    await lockTutorBooking(tx, p.id)
-    const s = await tx.recurringSeries.create({ data: { profileId: p.id, familyId: input.familyId, sessionTypeId: type.id, students: { connect: input.studentIds.map((id) => ({ id })) }, dayOfWeek: input.dayOfWeek, startMinute: input.startMinute, startsOn: input.startsOn, endsOn: input.endsOn ?? '', mode, status: 'active' } })
-    const g = await topUpSeriesInLock(tx, s.id)
-    return { seriesId: s.id, ...g }
-  })
-  return r
+  const s = await db.recurringSeries.create({ data: { profileId: p.id, familyId: input.familyId, sessionTypeId: type.id, students: { connect: input.studentIds.map((id) => ({ id })) }, dayOfWeek: input.dayOfWeek, startMinute: input.startMinute, startsOn: input.startsOn, endsOn: input.endsOn ?? '', mode, status: 'active' } })
+  const g = await topUpSeries(prisma, p.id, s.id)
+  return { seriesId: s.id, ...g }
 }
 
 export async function pauseSeries(prisma: PrismaClient, session: Session | undefined, id: string, resume?: boolean | null) {
@@ -300,7 +296,7 @@ export async function pauseSeries(prisma: PrismaClient, session: Session | undef
   if (resume) {
     const done = await db.recurringSeries.updateMany({ where: { id, profileId: p.id, status: 'paused' }, data: { status: 'active', generatedThrough: businessDateKey(new Date(), p.timezone) } })
     if (!done.count) throw new CommandError('Only a paused series can be resumed.')
-    await transaction(prisma, async (tx) => { await lockTutorBooking(tx, p.id); await topUpSeriesInLock(tx, id) })
+    await topUpSeries(prisma, p.id, id)
     return { id, status: 'active' }
   }
   const done = await db.recurringSeries.updateMany({ where: { id, profileId: p.id, status: 'active' }, data: { status: 'paused' } })

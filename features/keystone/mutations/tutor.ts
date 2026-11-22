@@ -57,7 +57,7 @@ export const tutorTypeDefs = {
     rejectPayment(paymentId: ID!, note: String): CommandResult!
     recordPayment(target: String!, targetId: ID!, amountCents: Int, method: String!, reference: String): CommandResult!
     refundPayment(paymentId: ID!, amountCents: Int, note: String): CommandResult!
-    createInvoice(familyId: ID!, sessionIds: [ID!], includeFlatFee: Boolean, extraLines: [InvoiceLineInput!], dueDays: Int, note: String): CommandResult!
+    draftInvoice(familyId: ID!, sessionIds: [ID!], includeFlatFee: Boolean, extraLines: [InvoiceLineInput!], dueDays: Int, note: String): CommandResult!
     addInvoiceLine(invoiceId: ID!, line: InvoiceLineInput!): CommandResult!
     removeInvoiceLine(lineId: ID!): CommandResult!
     sendInvoice(invoiceId: ID!, send: Boolean): CommandResult!
@@ -121,7 +121,7 @@ export const tutorResolvers = {
     rejectPayment: q((c, a) => t.rejectPayment(c.prisma, c.session, a.paymentId, a.note)),
     recordPayment: q((c, a) => t.recordPayment(c.prisma, c.session, a as never)),
     refundPayment: q((c, a) => t.refundPayment(c.prisma, c.session, a.paymentId, a.amountCents, a.note)),
-    createInvoice: q((c, a) => t.createInvoice(c.prisma, c.session, a as never)),
+    draftInvoice: q((c, a) => t.createInvoice(c.prisma, c.session, a as never)),
     addInvoiceLine: q((c, a) => t.addInvoiceLine(c.prisma, c.session, a.invoiceId, a.line)),
     removeInvoiceLine: q((c, a) => t.removeInvoiceLine(c.prisma, c.session, a.lineId)),
     sendInvoice: q((c, a) => t.sendInvoice(c.prisma, c.session, a.invoiceId, a.send)),

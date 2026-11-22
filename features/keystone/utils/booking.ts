@@ -373,39 +373,53 @@ export async function reopenSession(prisma: PrismaClient, sessionId: string, pro
 
 const WEEKS_AHEAD = 8
 
-/** Generates a series' sessions up to 8 weeks ahead. A clash skips that week and lists it. Runs inside the booking lock. */
-export async function topUpSeriesInLock(tx: Tx, seriesId: string, now = new Date()) {
+/**
+ * Generates a series' next week, inside the booking lock. Returns whether
+ * there is more to generate. One week per transaction keeps each lock short
+ * (a remote database makes 8 weeks in one transaction too slow).
+ */
+export async function topUpSeriesWeekInLock(tx: Tx, seriesId: string, now = new Date()): Promise<{ more: boolean; created: number; skipped: string[] }> {
   const series = await tx.recurringSeries.findUnique({ where: { id: seriesId }, include: { students: { select: { id: true } } } })
-  if (!series || series.status !== 'active' || !series.sessionTypeId || !series.familyId) return { created: 0, skipped: [] as string[] }
+  if (!series || series.status !== 'active' || !series.sessionTypeId || !series.familyId) return { more: false, created: 0, skipped: [] }
   const profile = await tx.tutorProfile.findUniqueOrThrow({ where: { id: series.profileId } })
-  const type = await tx.sessionType.findUnique({ where: { id: series.sessionTypeId } })
-  const family = await tx.family.findUnique({ where: { id: series.familyId }, select: { id: true, status: true, billingMode: true } })
-  if (!type || !family) return { created: 0, skipped: [] }
   const today = businessDateKey(now, profile.timezone)
   const horizon = addDays(today, WEEKS_AHEAD * 7)
   let date = series.generatedThrough ? addDays(series.generatedThrough, 1) : series.startsOn
   if (date < today) date = today
   while (dayIndexFor(date) !== series.dayOfWeek) date = addDays(date, 1)
-  const skipped: string[] = []
+  if (date > horizon || (series.endsOn && date > series.endsOn)) return { more: false, created: 0, skipped: [] }
+  const type = await tx.sessionType.findUnique({ where: { id: series.sessionTypeId } })
+  const family = await tx.family.findUnique({ where: { id: series.familyId }, select: { id: true, status: true, billingMode: true } })
+  if (!type || !family) return { more: false, created: 0, skipped: [] }
   let created = 0
-  let through = series.generatedThrough || addDays(series.startsOn, -1)
-  for (; date <= horizon && (!series.endsOn || date <= series.endsOn); date = addDays(date, 7)) {
-    through = date
-    let startsAt: Date
-    try { startsAt = businessWallTime(date, series.startMinute, profile.timezone) } catch { skipped.push(date); continue }
-    if (startsAt.getTime() <= now.getTime()) continue
+  const skipped: string[] = []
+  let startsAt: Date | null = null
+  try { startsAt = businessWallTime(date, series.startMinute, profile.timezone) } catch { skipped.push(date) }
+  if (startsAt && startsAt.getTime() > now.getTime()) {
     try {
       await bookInLock(tx, { profile, type, family, studentIds: series.students.map((s) => s.id), startsAt, actor: 'series', mode: series.mode, seriesId: series.id })
       created++
     } catch (e) {
-      if (e instanceof CommandError) { skipped.push(date); continue }
-      throw e
+      if (!(e instanceof CommandError)) throw e
+      skipped.push(date)
     }
   }
-  if (series.endsOn && horizon >= series.endsOn) through = series.endsOn > through ? series.endsOn : through
   const known = new Set((series.skippedDates || '').split('\n').filter(Boolean))
   skipped.forEach((d) => known.add(d))
-  await tx.recurringSeries.update({ where: { id: series.id }, data: { generatedThrough: through, skippedDates: [...known].sort().join('\n') } })
+  await tx.recurringSeries.update({ where: { id: series.id }, data: { generatedThrough: date, skippedDates: [...known].sort().join('\n') } })
+  return { more: addDays(date, 7) <= horizon && (!series.endsOn || addDays(date, 7) <= series.endsOn), created, skipped }
+}
+
+/** Generates a series up to 8 weeks ahead, one locked transaction per week. A clash skips that week and lists it. */
+export async function topUpSeries(prisma: PrismaClient, profileId: string, seriesId: string) {
+  let created = 0
+  const skipped: string[] = []
+  for (let i = 0; i < WEEKS_AHEAD + 2; i++) {
+    const r = await transaction(prisma, async (tx) => { await lockTutorBooking(tx, profileId); return topUpSeriesWeekInLock(tx, seriesId) })
+    created += r.created
+    skipped.push(...r.skipped)
+    if (!r.more) break
+  }
   return { created, skipped }
 }
 
@@ -418,7 +432,7 @@ export async function topUpAllSeries(prisma: PrismaClient, profileId: string) {
   const due = await db.recurringSeries.findMany({ where: { profileId, status: 'active', OR: [{ generatedThrough: '' }, { generatedThrough: { lt: horizon } }] }, select: { id: true, endsOn: true, generatedThrough: true }, take: 50 })
   for (const s of due) {
     if (s.endsOn && s.generatedThrough && s.generatedThrough >= s.endsOn) continue
-    await transaction(prisma, async (tx) => { await lockTutorBooking(tx, profileId); await topUpSeriesInLock(tx, s.id) })
+    await topUpSeries(prisma, profileId, s.id)
   }
 }
 

@@ -33,7 +33,7 @@ export function guarded(prisma: PrismaClient): PrismaClient {
  * sees everything committed before the lock was granted.
  */
 export function transaction<T>(prisma: PrismaClient, work: (tx: Tx) => Promise<T>): Promise<T> {
-  return guarded(prisma).$transaction(async (tx) => work(guardKeystonePrismaResults(tx)), { maxWait: 20_000, timeout: 30_000 })
+  return guarded(prisma).$transaction(async (tx) => work(guardKeystonePrismaResults(tx)), { maxWait: 30_000, timeout: 60_000 })
 }
 
 /** Serialises every path that takes a time slot for one tutor (D13). */
