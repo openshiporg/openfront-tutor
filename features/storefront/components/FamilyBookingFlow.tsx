@@ -58,7 +58,6 @@ export function FamilyBookingFlow({ tutor, family, initialTypeId }: { tutor: Pub
       return
     }
     router.push(`/account/sessions/${r.data.sessionId}`)
-    router.refresh()
   })
 
   return (
