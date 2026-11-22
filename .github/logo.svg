@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="236" height="44" viewBox="0 0 236 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(0 4)" style="color:#1d4ed8">
+    <svg viewBox="0 0 48 48" width="36" height="36" fill="none">
+      <path d="M24 13C19 9.5 11.5 8.5 5 9.5V38c6.5-1 14 0 19 3.5V13Z" fill="currentColor" opacity="0.9"/>
+      <path d="M24 13c5-3.5 12.5-4.5 19-3.5V38c-6.5-1-14 0-19 3.5V13Z" fill="currentColor" opacity="0.55"/>
+      <path d="M30 30.5 40.5 20l3 3L33 33.5l-4 1 1-4Z" fill="currentColor"/>
+    </svg>
+  </g>
+  <text x="46" y="25" font-family="Syne, 'Space Grotesk', system-ui, sans-serif" font-size="24" fill="#18181b"><tspan font-weight="600">open</tspan><tspan font-weight="400">front</tspan></text>
+  <text x="47" y="39" font-family="Syne, 'Space Grotesk', system-ui, sans-serif" font-size="10" font-weight="700" letter-spacing="1.4" fill="#71717a">TUTOR</text>
+</svg>

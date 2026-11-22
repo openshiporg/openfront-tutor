@@ -1,163 +1,67 @@
-# Next.js + KeystoneJS Starter
+![openfront-tutor](.github/logo.svg)
 
-A modern full-stack application combining Next.js 15 with KeystoneJS 6, featuring admin dashboard implementation and sophisticated role-based permissions.
+Openfront Tutor is a self-hostable booking, lessons and billing application for the independent tutor: one person teaching one-to-one, online or in person, paid by the session, by a package of hours or by a monthly invoice. Families book from your own page and pay by card or by bank transfer. You keep students, lessons, notes, homework, packages, invoices and earnings in one dashboard. No marketplace takes a cut.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fjunaid33%2Fnext-keystone-starter%2F&stores=[{"type"%3A"postgres"}])
+## What you get
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/TK5wC1?referralCode=I_tWSs)
+- **Your booking page** at `/book/your-address`: your session types, open times from your weekly hours and time off, shown in the family's own timezone, with no double booking. New families can be limited to a free consultation or a first lesson.
+- **A family account** at `/account`: one guardian, several students. Book, see upcoming and past sessions, read the notes you share, hand in homework, see package balances, pay invoices, and cancel or move a session within your policy.
+- **Three ways to charge**: per session, prepaid packages of hours (5, 10 or 20 hours at a discount, valid 12 months), or a monthly invoice drafted from the month's lessons. Every hour used or refunded is a ledger row, so a balance is never a guess.
+- **Card payments** through Stripe Checkout. Payment is confirmed by reading it back from Stripe, and a signed webhook settles it even if the family closes the tab. Refunds go back to the card.
+- **Direct payments** for bank transfer, Wise, UPI, M-Pesa or cash: you write your payment instructions, the family reports a payment, and you confirm it.
+- **Policies that run themselves**: a cancellation window (24 hours by default), late cancels and no-shows charged in full, and you can excuse any one of them.
+- **Today, Calendar, Families, Students, Billing, Earnings and Settings** in the dashboard: complete a session with a note and homework, mark a no-show, sell a package, confirm a payment, draft and send an invoice, record an expense, and export payments, sessions and earnings as CSV for your accountant.
+- **Calendar feeds**: an `.ics` file per session and a private iCal feed for you and for each family.
 
-## Architecture Overview
+## Setup
 
-This project features a **modern admin architecture** with:
-
-- **Backend**: KeystoneJS 6 providing GraphQL API, authentication, and database operations
-- **Frontend**: Custom Next.js admin dashboard with enhanced UI components
-- **Image Support**: S3-compatible image storage and management 
-
-## Tech Stack
-
-### Frontend
-- **Next.js 15** with App Router
-- **React 19** with TypeScript
-- **Radix UI** primitives for accessible components
-- **Tailwind CSS 4** for styling
-- **Remix Icons** (@remixicon/react) for icons
-- **SWR** for client-side data fetching
-- **TipTap** for rich text editing
-- **React Hook Form** for form management
-- **Zod** for schema validation
-
-### Backend
-- **KeystoneJS 6** for GraphQL API and admin interface
-- **Prisma ORM** for database operations
-- **GraphQL Yoga** for GraphQL server
-- **PostgreSQL** database
-- **S3-compatible storage** for image management
-
-### Key Features
-- **Role-based access control** with granular permissions
-- **Dynamic field controllers** with conditional behavior
-- **Rich text editing** with document fields
-- **Relationship management** with inline editing capabilities
-- **Image upload and management** with S3 storage
-- **Inline create/edit components** for seamless UX
-- **Advanced filtering system** for all field types
-- **Responsive design** with mobile support
-
-## Getting Started
-
-### Prerequisites
-- Node.js 18+ 
-- PostgreSQL database
-
-### Setup
-
-1. **Clone and install dependencies:**
-   ```bash
-   git clone https://github.com/junaid33/next-keystone-starter
-   cd next-keystone-starter
-   npm install
-   ```
-
-2. **Configure environment variables:**
-   ```bash
-   cp env.example .env
-   ```
-   
-   Update `.env` with your database configuration:
-   ```env
-   DATABASE_URL=postgresql://username:password@localhost:5432/database_name
-   SESSION_SECRET=your-super-secret-session-key-change-this-in-production
-   ```
-
-3. **Start development server:**
-   ```bash
-   npm run dev
-   ```
-
-   This will:
-   - Build KeystoneJS schema
-   - Run database migrations
-   - Start Next.js development server with Turbopack
-
-4. **Access the application:**
-   - Frontend: [http://localhost:3000](http://localhost:3000)
-   - Dashboard: [http://localhost:3000/dashboard](http://localhost:3000/dashboard)
-   - GraphQL API: [http://localhost:3000/api/graphql](http://localhost:3000/api/graphql)
-
-## Development Commands
-
-- `npm run dev` - Build Keystone + migrate + start Next.js dev server
-- `npm run build` - Build Keystone + migrate + build Next.js for production
-- `npm run migrate:gen` - Generate and apply new database migrations
-- `npm run migrate` - Deploy existing migrations to database
-- `npm run lint` - Run ESLint
-
-## API Endpoints
-
-### GraphQL API
-- **Endpoint**: `/api/graphql`
-- **Features**: Full CRUD operations, relationships, authentication
-- **Playground**: Available in development mode
-
-## Data Models
-
-### Core Models
-- **User** - Authentication and user management
-- **Role** - Role-based access control
-- **Todo** - Example content model with relationships
-- **TodoImage** - Image management for Todo items with S3 storage
-
-### Permission System
-Sophisticated role-based permissions including:
-- `canAccessDashboard`, `canManagePeople`, `canManageRoles`
-- `canCreateTodos`, `canManageAllTodos`
-- `canSeeOtherPeople`, `canEditOtherPeople`
-
-## Project Structure
-
-```
-├── app/                    # Next.js App Router
-│   ├── api/
-│   │   └── graphql.ts     # GraphQL API endpoint
-│   └── dashboard/         # Admin dashboard pages
-├── features/
-│   ├── keystone/          # Backend configuration
-│   │   ├── models/        # Keystone list definitions
-│   │   ├── access.ts      # Permission logic
-│   │   └── mutations/     # Custom GraphQL mutations
-│   └── dashboard/         # Admin interface implementation
-│       ├── actions/       # Server actions
-│       ├── components/    # Reusable UI components
-│       ├── screens/       # Page-level components
-│       └── views/         # Field type implementations
-├── keystone.ts            # KeystoneJS configuration
-└── schema.prisma          # Database schema
+```bash
+npm install
+cp .env.example .env   # DATABASE_URL and SESSION_SECRET at least
+npm run dev
 ```
 
-## Development Notes
+Open `/dashboard`, create your account, and the first-run page asks for your name, business name, page address, country, currency, timezone and subjects. Leave **Start with a typical setup** ticked to begin with five session types, three packages, weekly hours and a written policy you can edit. Set `STRIPE_SECRET_KEY` to take cards; without it the card buttons are hidden and families pay you directly.
 
-- **GraphQL endpoint** available at `/api/graphql`
-- **Field implementations** follow KeystoneJS controller patterns
-- **Permission checks** are integrated throughout the UI layer
-- **Server actions** used for data mutations in dashboard components
-- **Inline editing** components provide seamless UX for relationship management
-- **Image uploads** configured for S3-compatible storage
-- **Advanced filtering** supports all field types including documents, JSON, and images
+Email (confirmations, reminders, invoices, shared notes) uses SMTP. Without `SMTP_HOST`, every message is logged as skipped and each link it would have carried has a copy button so you can send it by WhatsApp or text.
 
-## Deployment
+Reminders 24 hours before a lesson need a cron that calls the jobs endpoint:
 
-The application can be deployed to any platform supporting Node.js and PostgreSQL:
+```bash
+curl -X POST -H "Authorization: Bearer $JOBS_SECRET" https://your-site/api/jobs/run
+```
 
-1. Set up PostgreSQL database
-2. Configure environment variables
-3. Run `npm run build`
-4. Run `npm start`
+The Stripe webhook address is `https://your-site/api/payment-webhooks/stripe`.
 
-## Contributing
+## Scripts
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
+| Command | What it does |
+|---|---|
+| `npm run dev` | Build the schema, apply migrations, start Next.js |
+| `npm run migrate` | Apply migrations (`prisma migrate deploy`) |
+| `npm run migrate:gen` | Generate a migration after a schema change |
+| `npm test` | Run the test suite against `TEST_DATABASE_URL` (its database name must end in `_test`) |
+| `npm run verify` | Type check, lint, then test |
+| `npm run seed:practice` | Fill one fictional tutor's practice for a public showcase deployment. Run by hand; it does nothing if the practice already exists |
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fopenshiporg%2Fopenfront-tutor&env=DATABASE_URL%2CSESSION_SECRET)
+
+## The Openfront Ecosystem
+
+Every Openfront is open source and self-hostable.
+
+| Product | For | Repository | Demo | Docs |
+|---|---|---|---|---|
+| Openfront E-commerce | Online store: catalog, checkout, orders, fulfillment | [openfront](https://github.com/openshiporg/openfront) | [e-commerce.openship.org](https://e-commerce.openship.org) | [Docs](https://docs.openship.org/docs/openfront/ecommerce) |
+| Openfront Restaurant | Online ordering, POS and kitchen display | [openfront-restaurant](https://github.com/openshiporg/openfront-restaurant) | [restaurant.openship.org](https://restaurant.openship.org) | [Docs](https://docs.openship.org/docs/openfront/restaurant) |
+| Openfront Grocery | Grocery ordering, lots, expiry and pickup | [openfront-grocery](https://github.com/openshiporg/openfront-grocery) | [grocery.openship.org](https://grocery.openship.org) | [Docs](https://docs.openship.org/docs/openfront/grocery) |
+| Openfront Gym | Memberships, classes, check-in and billing | [openfront-gym](https://github.com/openshiporg/openfront-gym) | [gym.openship.org](https://gym.openship.org) | [Docs](https://docs.openship.org/docs/openfront/gym) |
+| Openfront Hotel | Reservations, front desk, housekeeping, folios | [openfront-hotel](https://github.com/openshiporg/openfront-hotel) | [hotel.openship.org](https://hotel.openship.org) | [Docs](https://docs.openship.org/docs/openfront/hotel) |
+| Openfront Rental | Short-term rental bookings and calendars | [openfront-rental](https://github.com/openshiporg/openfront-rental) | [rental.openship.org](https://rental.openship.org) | [Docs](https://docs.openship.org/docs/openfront/rental) |
+| Openfront Salon | Appointments, stylists and services | [openfront-salon](https://github.com/openshiporg/openfront-salon) | [salon.openship.org](https://salon.openship.org) | [Docs](https://docs.openship.org/docs/openfront/salon) |
+| Openfront Barbershop | Bookings, walk-ins and barbers | [openfront-barbershop](https://github.com/openshiporg/openfront-barbershop) | [barbershop.openship.org](https://barbershop.openship.org) | [Docs](https://docs.openship.org/docs/openfront/barbershop) |
+| Openfront Barber | Booking, deposits and earnings for the independent barber | [openfront-barber](https://github.com/openshiporg/openfront-barber) | | |
+| Openfront Financial | Accounts, portfolios and advisory | [openfront-financial](https://github.com/openshiporg/openfront-financial) | [financial.openship.org](https://financial.openship.org) | [Docs](https://docs.openship.org/docs/openfront/financial) |
+| Openfront Analytics | Privacy-friendly website analytics | [analytics](https://github.com/openshiporg/analytics) | [analytics.openship.org](https://analytics.openship.org) | [Docs](https://docs.openship.org/docs/openfront/analytics) |
+| Openship | Order routing from sales channels to fulfillment | [openship](https://github.com/openshiporg/openship) | [os.openship.org](https://os.openship.org) | [Docs](https://docs.openship.org/docs/openship/ecommerce) |
+| Marketplace | Shop across Openfront stores | [marketplace](https://github.com/openshiporg/marketplace) | [marketplace.openship.org](https://marketplace.openship.org) | [Docs](https://docs.openship.org/docs/openfront/marketplace) |
