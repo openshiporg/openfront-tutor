@@ -29,8 +29,6 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default function StorefrontLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`${serif.variable} ${script.variable} ${hand.variable} ${sans.variable} min-h-dvh bg-paper font-body text-ink antialiased`}>
-      <StorefrontShell>{children}</StorefrontShell>
-    </div>
+    <StorefrontShell className={`${serif.variable} ${script.variable} ${hand.variable} ${sans.variable} bg-paper font-body text-ink antialiased`}>{children}</StorefrontShell>
   )
 }
