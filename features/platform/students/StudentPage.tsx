@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
-import { DeleteItemButton, ItemForm } from '../lib/actions'
+import { DeleteItemButton } from '../lib/actions'
+import { SetHomeworkForm } from '../lib/forms'
 import { day, label, lists, read, when } from '../lib/data'
 import { Empty, Field, Section, inputClass } from '../lib/ui'
 import { Page } from '../shell/Page'
@@ -40,12 +41,12 @@ export default async function StudentPage({ params }: { params: Promise<{ id: st
         </Section>
         <Section title="Homework">
           {!s.homework.length ? <Empty>No homework yet.</Empty> : <ul className="grid gap-1 text-sm">{s.homework.map((h: any) => <li key={h.id}>{h.title} · {label(h.status)}{h.dueAt ? ` · due ${day(h.dueAt, tz)}` : ''}</li>)}</ul>}
-          <ItemForm list="Homework" submit="Set homework" resetOnDone className="grid gap-2 sm:grid-cols-2" toData={(f) => ({ student: { connect: { id: s.id } }, title: f.get('title'), instructions: f.get('instructions'), dueAt: f.get('due') ? new Date(`${f.get('due')}T23:00:00`).toISOString() : null, linkUrl: f.get('link') })}>
+          <SetHomeworkForm studentId={s.id} className="grid gap-2 sm:grid-cols-2">
             <Field label="Title"><input name="title" required className={inputClass} /></Field>
             <Field label="Due"><input name="due" type="date" className={inputClass} /></Field>
             <Field label="Instructions"><input name="instructions" className={inputClass} /></Field>
             <Field label="Link"><input name="link" type="url" className={inputClass} /></Field>
-          </ItemForm>
+          </SetHomeworkForm>
         </Section>
       </div>
     </Page>

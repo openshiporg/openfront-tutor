@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
-import { ActionButton, ActionForm, LinkMaker } from '../lib/actions'
+import { ActionButton, LinkMaker } from '../lib/actions'
+import { AddInvoiceLineForm } from '../lib/forms'
 import { day, label, money, read, when } from '../lib/data'
 import { Field, Pill, Section, inputClass } from '../lib/ui'
 import { Page } from '../shell/Page'
@@ -32,11 +33,11 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
           </tbody></table>
           {i.note ? <p className="text-sm">{i.note}</p> : null}
           {draft ? (
-            <ActionForm op="addInvoiceLine" submit="Add line" className="grid gap-2 sm:grid-cols-3" toVars={(f) => ({ invoiceId: i.id, line: { description: f.get('d'), quantity: Number(f.get('q') || 1), unitCents: Math.round(Number(f.get('u') || 0) * 100) } })}>
+            <AddInvoiceLineForm invoiceId={i.id} className="grid gap-2 sm:grid-cols-3">
               <Field label="Description"><input name="d" required className={inputClass} /></Field>
               <Field label="Quantity"><input name="q" type="number" min="1" defaultValue="1" className={inputClass} /></Field>
               <Field label={`Price each (${cur})`}><input name="u" type="number" min="0" step="0.01" required className={inputClass} /></Field>
-            </ActionForm>
+            </AddInvoiceLineForm>
           ) : null}
           <div className="flex flex-wrap gap-2">
             {draft ? <SendInvoiceButton id={i.id} hasEmail={Boolean(i.family?.email)} /> : null}

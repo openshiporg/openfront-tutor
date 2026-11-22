@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-import { ActionForm } from '../lib/actions'
+import { RefundPaymentForm } from '../lib/forms'
 import { label, lists, money, read, when } from '../lib/data'
 import { Field, Section, inputClass } from '../lib/ui'
 import { Page } from '../shell/Page'
@@ -34,10 +34,10 @@ export default async function PaymentPage({ params }: { params: Promise<{ id: st
       </Section>
       {['confirmed', 'partially_refunded'].includes(p.status) && p.kind !== 'refund' && left > 0 ? (
         <Section title="Refund">
-          <ActionForm op="refundPayment" submit={p.method === 'stripe' ? 'Refund to the card' : 'Record the refund'} className="grid gap-2 sm:grid-cols-2" toVars={(f) => ({ paymentId: p.id, amountCents: Math.round(Number(f.get('amount')) * 100), note: f.get('note') })} done={(r) => `Refunded ${money(r?.refundedCents, cur)}.`}>
+          <RefundPaymentForm paymentId={p.id} currency={cur} submit={p.method === 'stripe' ? 'Refund to the card' : 'Record the refund'} className="grid gap-2 sm:grid-cols-2">
             <Field label={`Amount (up to ${money(left, cur)})`}><input name="amount" type="number" min="0.01" step="0.01" max={(left / 100).toFixed(2)} defaultValue={(left / 100).toFixed(2)} className={inputClass} /></Field>
             <Field label="Reason"><input name="note" className={inputClass} /></Field>
-          </ActionForm>
+          </RefundPaymentForm>
           {p.method !== 'stripe' ? <p className="text-xs text-muted-foreground">You give this money back yourself; this records it.</p> : null}
         </Section>
       ) : null}

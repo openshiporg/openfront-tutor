@@ -177,7 +177,7 @@ function guarded(prisma) {
   return guardKeystonePrismaResults(prisma);
 }
 function transaction(prisma, work) {
-  return guarded(prisma).$transaction(async (tx) => work(guardKeystonePrismaResults(tx)), { maxWait: 2e4, timeout: 3e4 });
+  return guarded(prisma).$transaction(async (tx) => work(guardKeystonePrismaResults(tx)), { maxWait: 3e4, timeout: 6e4 });
 }
 async function lockTutorBooking(tx, profileId) {
   await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", "tutor-booking", profileId);
@@ -929,7 +929,8 @@ __export(booking_exports, {
   rescheduleSession: () => rescheduleSession,
   slotsForDay: () => slotsForDay,
   topUpAllSeries: () => topUpAllSeries,
-  topUpSeriesInLock: () => topUpSeriesInLock
+  topUpSeries: () => topUpSeries,
+  topUpSeriesWeekInLock: () => topUpSeriesWeekInLock
 });
 async function busyBetween(db, profileId, start, end, excludeSessionId) {
   const [sessions, off] = await Promise.all([
@@ -1228,46 +1229,53 @@ async function reopenSession(prisma, sessionId, profileId) {
     return { status: "scheduled" };
   });
 }
-async function topUpSeriesInLock(tx, seriesId, now = /* @__PURE__ */ new Date()) {
+async function topUpSeriesWeekInLock(tx, seriesId, now = /* @__PURE__ */ new Date()) {
   const series = await tx.recurringSeries.findUnique({ where: { id: seriesId }, include: { students: { select: { id: true } } } });
-  if (!series || series.status !== "active" || !series.sessionTypeId || !series.familyId) return { created: 0, skipped: [] };
+  if (!series || series.status !== "active" || !series.sessionTypeId || !series.familyId) return { more: false, created: 0, skipped: [] };
   const profile = await tx.tutorProfile.findUniqueOrThrow({ where: { id: series.profileId } });
-  const type = await tx.sessionType.findUnique({ where: { id: series.sessionTypeId } });
-  const family = await tx.family.findUnique({ where: { id: series.familyId }, select: { id: true, status: true, billingMode: true } });
-  if (!type || !family) return { created: 0, skipped: [] };
   const today2 = businessDateKey(now, profile.timezone);
   const horizon = addDays(today2, WEEKS_AHEAD * 7);
   let date = series.generatedThrough ? addDays(series.generatedThrough, 1) : series.startsOn;
   if (date < today2) date = today2;
   while (dayIndexFor(date) !== series.dayOfWeek) date = addDays(date, 1);
-  const skipped = [];
+  if (date > horizon || series.endsOn && date > series.endsOn) return { more: false, created: 0, skipped: [] };
+  const type = await tx.sessionType.findUnique({ where: { id: series.sessionTypeId } });
+  const family = await tx.family.findUnique({ where: { id: series.familyId }, select: { id: true, status: true, billingMode: true } });
+  if (!type || !family) return { more: false, created: 0, skipped: [] };
   let created = 0;
-  let through = series.generatedThrough || addDays(series.startsOn, -1);
-  for (; date <= horizon && (!series.endsOn || date <= series.endsOn); date = addDays(date, 7)) {
-    through = date;
-    let startsAt;
-    try {
-      startsAt = businessWallTime(date, series.startMinute, profile.timezone);
-    } catch {
-      skipped.push(date);
-      continue;
-    }
-    if (startsAt.getTime() <= now.getTime()) continue;
+  const skipped = [];
+  let startsAt = null;
+  try {
+    startsAt = businessWallTime(date, series.startMinute, profile.timezone);
+  } catch {
+    skipped.push(date);
+  }
+  if (startsAt && startsAt.getTime() > now.getTime()) {
     try {
       await bookInLock(tx, { profile, type, family, studentIds: series.students.map((s) => s.id), startsAt, actor: "series", mode: series.mode, seriesId: series.id });
       created++;
     } catch (e) {
-      if (e instanceof CommandError) {
-        skipped.push(date);
-        continue;
-      }
-      throw e;
+      if (!(e instanceof CommandError)) throw e;
+      skipped.push(date);
     }
   }
-  if (series.endsOn && horizon >= series.endsOn) through = series.endsOn > through ? series.endsOn : through;
   const known = new Set((series.skippedDates || "").split("\n").filter(Boolean));
   skipped.forEach((d) => known.add(d));
-  await tx.recurringSeries.update({ where: { id: series.id }, data: { generatedThrough: through, skippedDates: [...known].sort().join("\n") } });
+  await tx.recurringSeries.update({ where: { id: series.id }, data: { generatedThrough: date, skippedDates: [...known].sort().join("\n") } });
+  return { more: addDays(date, 7) <= horizon && (!series.endsOn || addDays(date, 7) <= series.endsOn), created, skipped };
+}
+async function topUpSeries(prisma, profileId, seriesId) {
+  let created = 0;
+  const skipped = [];
+  for (let i = 0; i < WEEKS_AHEAD + 2; i++) {
+    const r = await transaction(prisma, async (tx) => {
+      await lockTutorBooking(tx, profileId);
+      return topUpSeriesWeekInLock(tx, seriesId);
+    });
+    created += r.created;
+    skipped.push(...r.skipped);
+    if (!r.more) break;
+  }
   return { created, skipped };
 }
 async function topUpAllSeries(prisma, profileId) {
@@ -1278,10 +1286,7 @@ async function topUpAllSeries(prisma, profileId) {
   const due = await db.recurringSeries.findMany({ where: { profileId, status: "active", OR: [{ generatedThrough: "" }, { generatedThrough: { lt: horizon } }] }, select: { id: true, endsOn: true, generatedThrough: true }, take: 50 });
   for (const s of due) {
     if (s.endsOn && s.generatedThrough && s.generatedThrough >= s.endsOn) continue;
-    await transaction(prisma, async (tx) => {
-      await lockTutorBooking(tx, profileId);
-      await topUpSeriesInLock(tx, s.id);
-    });
+    await topUpSeries(prisma, profileId, s.id);
   }
 }
 async function cancelFutureSeriesSessions(prisma, seriesId, profileId) {
@@ -1572,7 +1577,8 @@ var Role = (0, import_core2.list)({
   access: {
     operation: {
       ...(0, import_access3.allOperations)(permissions.canManageRoles),
-      query: isSignedIn
+      // Session data reads the caller's role with sudo, so a family needs no read access here (§9.15).
+      query: (args) => isSignedIn(args) && Boolean(args.session?.data.role?.canSeeOtherPeople || args.session?.data.role?.canManageRoles)
     }
   },
   ui: {
@@ -3106,7 +3112,7 @@ init_ledger();
 var origin = () => trustedOrigin();
 var bookingLink = (id, token) => `${origin()}/booking/${encodeURIComponent(id)}?t=${encodeURIComponent(token)}`;
 var invoiceLink = (id, token) => `${origin()}/invoice/${encodeURIComponent(id)}?t=${encodeURIComponent(token)}`;
-var fmtWhen = (d, tz) => new Intl.DateTimeFormat("en-US", { timeZone: tz, dateStyle: "full", timeStyle: "short", timeZoneName: "short" }).format(d);
+var fmtWhen = (d, tz) => new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(d);
 async function profileBySlug(db, slug) {
   const p = await db.tutorProfile.findUnique({ where: { slug: cleanText(slug, 60).toLowerCase() } });
   if (!p) throw new CommandError("This tutor page was not found.");
@@ -3126,7 +3132,9 @@ async function publicTutor(prisma, slug) {
   });
   if (!p) return null;
   const ratings = p.reviews.map((r) => r.rating);
+  const takesCards = stripeOn() && Boolean(await cardProvider(db, p.id));
   return iso({
+    id: p.id,
     slug: p.slug,
     businessName: p.businessName,
     tutorName: p.tutorName,
@@ -3153,11 +3161,12 @@ async function publicTutor(prisma, slug) {
     unpaidHoldMinutes: p.unpaidHoldMinutes,
     reschedulesAllowed: p.reschedulesAllowed,
     policiesText: p.policiesText,
-    cardPayments: stripeOn() && Boolean(await cardProvider(db, p.id)),
+    cardPayments: takesCards,
+    takesCards,
     reviewsEnabled: p.reviewsEnabled,
     subjects: p.subjects,
     sessionTypes: p.sessionTypes.map((t) => ({ ...t, subjectIds: t.subjects.map((s) => s.id), subjects: void 0 })),
-    packages: p.packages,
+    packages: p.packages.map((x) => ({ ...x, appliesToIds: x.appliesTo.map((t) => t.id) })),
     hours: p.weeklyHours,
     reviews: p.reviewsEnabled ? p.reviews : [],
     rating: ratings.length ? { average: Math.round(ratings.reduce((a, b) => a + b, 0) / ratings.length * 10) / 10, count: ratings.length } : null
@@ -3208,7 +3217,7 @@ async function bookFirstSession(prisma, input) {
   const tz = timezone || profile.timezone;
   void notify(prisma, { profileId: profile.id, kind: "booking_confirmed", to: visitor.email, subject: s.status === "pending_payment" ? `Finish booking: ${type.name}` : `Booked: ${type.name} with ${profile.businessName}`, lines: [`Hi ${visitor.guardianName},`, s.status === "pending_payment" ? `Your time is held until ${fmtWhen(s.holdEndsAt, tz)}. Pay to confirm it.` : `${type.name} for ${visitor.studentName} is booked for ${fmtWhen(s.startsAt, tz)}.`, "Open your booking to see the lesson link, add it to your calendar, pay, move or cancel it."], link, linkLabel: "Open your booking", replyTo: profile.email, sessionId: s.id });
   void notify(prisma, { profileId: profile.id, kind: "tutor_new_booking", to: profile.email, subject: `New booking: ${visitor.guardianName}, ${fmtWhen(s.startsAt, profile.timezone)}`, lines: [`${visitor.guardianName} booked ${type.name} for ${visitor.studentName} (${visitor.studentLevel || "level not given"}).`, visitor.needs ? `They wrote: ${visitor.needs}` : ""].filter(Boolean), link: `${origin()}/dashboard/platform/sessions/${s.id}`, linkLabel: "Open in your dashboard", sessionId: s.id });
-  return { bookingId: s.id, token: result.token, status: s.status, funding: s.funding, needsPayment: s.status === "pending_payment", holdEndsAt: s.holdEndsAt?.toISOString() ?? null, bookingUrl: link };
+  return { bookingId: s.id, sessionId: s.id, token: result.token, status: s.status, funding: s.funding, needsPayment: s.status === "pending_payment", holdEndsAt: s.holdEndsAt?.toISOString() ?? null, bookingUrl: link };
 }
 async function bookingByToken(db, id, token) {
   const s = await db.session.findUnique({ where: { id }, select: { id: true, profileId: true, publicAccessTokenHash: true } });
@@ -3259,6 +3268,7 @@ async function sessionView(prisma, id) {
     guardianName: s.family?.guardianName ?? "",
     hasAccount: Boolean(s.family?.userId),
     canPayByCard: card,
+    takesCards: card,
     payDirectly: payable && !card,
     paymentInstructions: payable || s.funding === "invoice" ? p.paymentInstructions : "",
     canCancel: Boolean(terms) && s.startsAt.getTime() > Date.now(),
@@ -3356,6 +3366,7 @@ async function invoiceView(prisma, id) {
     currencyCode: p.currencyCode,
     tutor: { businessName: p.businessName, email: p.email, phone: p.phone, slug: p.slug },
     canPayByCard: card,
+    takesCards: card,
     paymentInstructions: open ? p.paymentInstructions : ""
   });
 }
@@ -3963,13 +3974,9 @@ async function saveSeries(prisma, session, input) {
     await db.recurringSeries.updateMany({ where: { id: old.id }, data: { status: "ended", endsOn: businessDateKey(/* @__PURE__ */ new Date(), p.timezone) } });
     await cancelFutureSeriesSessions(prisma, old.id, p.id);
   }
-  const r = await transaction(prisma, async (tx) => {
-    await lockTutorBooking(tx, p.id);
-    const s = await tx.recurringSeries.create({ data: { profileId: p.id, familyId: input.familyId, sessionTypeId: type.id, students: { connect: input.studentIds.map((id) => ({ id })) }, dayOfWeek: input.dayOfWeek, startMinute: input.startMinute, startsOn: input.startsOn, endsOn: input.endsOn ?? "", mode, status: "active" } });
-    const g = await topUpSeriesInLock(tx, s.id);
-    return { seriesId: s.id, ...g };
-  });
-  return r;
+  const s = await db.recurringSeries.create({ data: { profileId: p.id, familyId: input.familyId, sessionTypeId: type.id, students: { connect: input.studentIds.map((id) => ({ id })) }, dayOfWeek: input.dayOfWeek, startMinute: input.startMinute, startsOn: input.startsOn, endsOn: input.endsOn ?? "", mode, status: "active" } });
+  const g = await topUpSeries(prisma, p.id, s.id);
+  return { seriesId: s.id, ...g };
 }
 async function pauseSeries(prisma, session, id, resume) {
   const db = guarded(prisma);
@@ -3977,10 +3984,7 @@ async function pauseSeries(prisma, session, id, resume) {
   if (resume) {
     const done2 = await db.recurringSeries.updateMany({ where: { id, profileId: p.id, status: "paused" }, data: { status: "active", generatedThrough: businessDateKey(/* @__PURE__ */ new Date(), p.timezone) } });
     if (!done2.count) throw new CommandError("Only a paused series can be resumed.");
-    await transaction(prisma, async (tx) => {
-      await lockTutorBooking(tx, p.id);
-      await topUpSeriesInLock(tx, id);
-    });
+    await topUpSeries(prisma, p.id, id);
     return { id, status: "active" };
   }
   const done = await db.recurringSeries.updateMany({ where: { id, profileId: p.id, status: "active" }, data: { status: "paused" } });
@@ -4477,8 +4481,8 @@ function extendGraphqlSchema(baseSchema) {
         redirectToInit: Boolean
         publicTutor(slug: String!): JSON
         homeTutor: JSON
-        publicSlots(slug: String!, sessionTypeId: ID!, date: String!, timezone: String, excludeSessionId: ID, token: String): CommandResult!
-        publicOpenDays(slug: String!, sessionTypeId: ID!, from: String!, days: Int, timezone: String): CommandResult!
+        publicSlots(slug: String!, sessionTypeId: ID!, date: String!, timezone: String, timeZone: String, excludeSessionId: ID, token: String): CommandResult!
+        publicOpenDays(slug: String!, sessionTypeId: ID!, from: String!, days: Int, timezone: String, timeZone: String): CommandResult!
         publicBooking(id: ID!, token: String!): CommandResult!
         publicInvoice(id: ID!, token: String!): CommandResult!
         myFamily: CommandResult!
@@ -4525,8 +4529,8 @@ function extendGraphqlSchema(baseSchema) {
         redirectToInit: redirectToInit_default,
         publicTutor: (_r, a, c) => publicTutor(c.prisma, a.slug),
         homeTutor: (_r, _a, c) => homeTutor(c.prisma),
-        publicSlots: (_r, a, c) => run2(() => publicSlots(c.prisma, a, c.session)),
-        publicOpenDays: (_r, a, c) => run2(() => publicOpenDays(c.prisma, a)),
+        publicSlots: (_r, a, c) => run2(() => publicSlots(c.prisma, { ...a, timezone: a.timezone ?? a.timeZone }, c.session)),
+        publicOpenDays: (_r, a, c) => run2(() => publicOpenDays(c.prisma, { ...a, timezone: a.timezone ?? a.timeZone })),
         publicBooking: (_r, a, c) => run2(() => publicBooking(c.prisma, a.id, a.token)),
         publicInvoice: (_r, a, c) => run2(() => publicInvoice(c.prisma, a.id, a.token)),
         myFamily: (_r, _a, c) => run2(() => myFamily(c.prisma, c.session)),

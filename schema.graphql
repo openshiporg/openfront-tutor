@@ -4655,8 +4655,8 @@ type Query {
   redirectToInit: Boolean
   publicTutor(slug: String!): JSON
   homeTutor: JSON
-  publicSlots(slug: String!, sessionTypeId: ID!, date: String!, timezone: String, excludeSessionId: ID, token: String): CommandResult!
-  publicOpenDays(slug: String!, sessionTypeId: ID!, from: String!, days: Int, timezone: String): CommandResult!
+  publicSlots(slug: String!, sessionTypeId: ID!, date: String!, timezone: String, timeZone: String, excludeSessionId: ID, token: String): CommandResult!
+  publicOpenDays(slug: String!, sessionTypeId: ID!, from: String!, days: Int, timezone: String, timeZone: String): CommandResult!
   publicBooking(id: ID!, token: String!): CommandResult!
   publicInvoice(id: ID!, token: String!): CommandResult!
   myFamily: CommandResult!

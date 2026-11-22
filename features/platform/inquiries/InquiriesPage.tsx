@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
-import { ActionButton, ActionForm } from '../lib/actions'
+import { ActionButton } from '../lib/actions'
+import { ConvertInquiryForm } from '../lib/forms'
 import { label, lists, read, when } from '../lib/data'
 import { Empty, Field, Pill, Section, inputClass } from '../lib/ui'
 import { Page } from '../shell/Page'
@@ -25,10 +26,10 @@ export default async function InquiriesPage() {
               {q.status === 'new' ? <ActionButton op="setInquiryStatus" vars={{ id: q.id, status: 'contacted' }} label="Mark contacted" /> : null}
               <ActionButton op="setInquiryStatus" vars={{ id: q.id, status: 'closed' }} label="Close" variant="danger" confirm="Close this inquiry?" />
             </div>
-            <ActionForm op="convertInquiry" submit="Make them a family" className="grid gap-2 sm:grid-cols-3" toVars={(f) => ({ id: q.id, studentName: f.get('studentName'), billingMode: f.get('billingMode') })} done={(r) => <>Family created. <Link className="underline" href={`/dashboard/platform/families/${r.familyId}`}>Open the family</Link>{r.inviteUrl ? <> · Invite link: <code className="break-all text-xs">{r.inviteUrl}</code></> : null}</>}>
+            <ConvertInquiryForm id={q.id} className="grid gap-2 sm:grid-cols-3">
               <Field label="Student name"><input name="studentName" className={inputClass} /></Field>
               <Field label="Billing"><select name="billingMode" className={inputClass}><option value="pay_as_you_book">Pays as they book</option><option value="invoice">Invoiced later</option><option value="flat_monthly">Flat monthly fee</option></select></Field>
-            </ActionForm>
+            </ConvertInquiryForm>
           </div>
         ))}
       </Section>

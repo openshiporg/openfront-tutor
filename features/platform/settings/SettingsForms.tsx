@@ -82,7 +82,6 @@ export function PaymentSettingsForm({ p }: { p: any }) {
   )
 }
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 const hm = (m: number | null | undefined) => m == null ? '' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 const mins = (v: string) => { if (!v) return null; const [h, m] = v.split(':').map(Number); return h * 60 + m }
 
@@ -105,7 +104,6 @@ export function HoursRow({ day, row }: { day: string; row: any | null }) {
     </ItemForm>
   )
 }
-export { DAYS }
 
 /** P23: a session type. */
 export function SessionTypeForm({ t, subjects, currency }: { t?: any; subjects: any[]; currency: string }) {

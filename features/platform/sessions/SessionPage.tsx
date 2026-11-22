@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
-import { ActionButton, ActionForm, LinkMaker } from '../lib/actions'
+import { ActionButton, LinkMaker } from '../lib/actions'
+import { SessionNoteForm } from '../lib/forms'
 import { day, label, money, read, when } from '../lib/data'
 import { Empty, Field, Pill, Section, inputClass, textareaClass } from '../lib/ui'
 import { Page } from '../shell/Page'
@@ -45,14 +46,14 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
         </Section>
         <Section title="Note">
           {s.status === 'completed' || s.note ? (
-            <ActionForm op="saveSessionNote" submit={s.note?.sharedAt ? 'Save note' : 'Save and share'} toVars={(f) => ({ sessionId: s.id, covered: f.get('covered'), wentWell: f.get('wentWell'), workOnNext: f.get('workOnNext'), privateNote: f.get('privateNote'), effort: f.get('effort') ? Number(f.get('effort')) : null, share: true })}>
+            <SessionNoteForm sessionId={s.id} submit={s.note?.sharedAt ? 'Save note' : 'Save and share'}>
               <Field label="What we covered"><textarea name="covered" defaultValue={s.note?.covered ?? ''} className={textareaClass} /></Field>
               <Field label="What went well"><textarea name="wentWell" defaultValue={s.note?.wentWell ?? ''} className={textareaClass} /></Field>
               <Field label="Work on next"><textarea name="workOnNext" defaultValue={s.note?.workOnNext ?? ''} className={textareaClass} /></Field>
               <Field label="Private note" hint="Only you see this."><textarea name="privateNote" defaultValue={s.note?.privateNote ?? ''} className={textareaClass} /></Field>
               <Field label="Effort"><select name="effort" defaultValue={s.note?.effort ?? ''} className={inputClass}><option value="">Not recorded</option>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}</select></Field>
               <p className="text-xs text-muted-foreground">{s.note?.sharedAt ? `Shared ${when(s.note.sharedAt, tz)}` : 'Not shared yet.'}</p>
-            </ActionForm>
+            </SessionNoteForm>
           ) : <Empty>Complete the session to write its note.</Empty>}
           {s.homework.length ? <ul className="grid gap-1 text-sm">{s.homework.map((h: any) => <li key={h.id}>{h.student?.firstName}: {h.title} · {label(h.status)}{h.dueAt ? ` · due ${day(h.dueAt, tz)}` : ''}</li>)}</ul> : null}
         </Section>

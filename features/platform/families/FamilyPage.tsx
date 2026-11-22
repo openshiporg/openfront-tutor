@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
-import { ActionButton, ActionForm } from '../lib/actions'
+import { ActionButton } from '../lib/actions'
+import { AdjustMinutesForm, RefundPackageButton, SellPackageForm } from '../lib/forms'
 import { day, label, lists, money, read, when } from '../lib/data'
 import { Empty, Field, Pill, Section, inputClass } from '../lib/ui'
 import { Page } from '../shell/Page'
@@ -47,21 +48,21 @@ export default async function FamilyPage({ params }: { params: Promise<{ id: str
               <p className="text-muted-foreground">{money(p.pricePaidCents, cur)}{p.refundedCents ? ` · refunded ${money(p.refundedCents, cur)}` : ''}{p.expiresAt ? ` · expires ${day(p.expiresAt, tz)}` : ''}</p>
               <details><summary className="cursor-pointer">Ledger ({p.entries.length})</summary><ul className="mt-1 grid gap-0.5">{p.entries.map((e: any) => <li key={e.id}>{when(e.createdAt, tz)} · {label(e.kind)} · {e.minutes > 0 ? '+' : ''}{e.minutes} min{e.heldChange ? ` (held ${e.heldChange > 0 ? '+' : ''}${e.heldChange})` : ''}{e.note ? ` · ${e.note}` : ''}{e.session ? <> · <Link className="underline" href={`/dashboard/platform/sessions/${e.session.id}`}>session</Link></> : null}</li>)}</ul></details>
               {p.status === 'awaiting_payment' ? <><RecordPaymentForm target="package" targetId={p.id} defaultCents={p.pricePaidCents} currency={cur} /><ActionButton op="cancelPackagePurchase" vars={{ purchaseId: p.id }} label="Cancel this package" variant="danger" confirm="Cancel this unpaid package?" /></> : null}
-              {['active', 'used_up', 'expired'].includes(p.status) && p.minutesRemaining > 0 ? <ActionButton op="refundPackage" vars={{ purchaseId: p.id }} label="Refund unused minutes" variant="danger" confirm={`Refund ${p.minutesRemaining} unused minutes, pro rata of the price paid? A card payment is refunded through Stripe.`} done={(d) => `Refunded ${money(d?.refundedCents, cur)}.`} /> : null}
+              {['active', 'used_up', 'expired'].includes(p.status) && p.minutesRemaining > 0 ? <RefundPackageButton purchaseId={p.id} currency={cur} confirm={`Refund ${p.minutesRemaining} unused minutes, pro rata of the price paid? A card payment is refunded through Stripe.`} /> : null}
               {['active', 'used_up'].includes(p.status) ? (
-                <ActionForm op="adjustMinutes" submit="Adjust minutes" className="grid gap-2 sm:grid-cols-3" toVars={(x) => ({ purchaseId: p.id, minutes: Math.trunc(Number(x.get('minutes'))), reason: x.get('reason') })}>
+                <AdjustMinutesForm purchaseId={p.id} className="grid gap-2 sm:grid-cols-3">
                   <Field label="Minutes (+ or −)"><input name="minutes" type="number" step="1" required className={inputClass} /></Field>
                   <Field label="Reason"><input name="reason" required className={inputClass} /></Field>
-                </ActionForm>
+                </AdjustMinutesForm>
               ) : null}
             </div>
           ))}
           {opts?.packages?.length ? (
-            <ActionForm op="sellPackage" submit="Sell package" className="grid gap-2 rounded-md border p-3 sm:grid-cols-3" toVars={(x) => ({ familyId: f.id, packageId: x.get('packageId'), method: x.get('method'), reference: x.get('reference') })} done={() => 'Sold and paid; the minutes are ready to use.'}>
+            <SellPackageForm familyId={f.id} className="grid gap-2 rounded-md border p-3 sm:grid-cols-3">
               <Field label="Package"><select name="packageId" className={inputClass}>{opts.packages.map((p: any) => <option key={p.id} value={p.id}>{p.name} · {money(p.priceCents, cur)}</option>)}</select></Field>
               <Field label="Paid with"><select name="method" className={inputClass}><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="mobile_money">Mobile money</option><option value="other">Other</option></select></Field>
               <Field label="Reference"><input name="reference" className={inputClass} /></Field>
-            </ActionForm>
+            </SellPackageForm>
           ) : <Empty>Add packages in <Link className="underline" href="/dashboard/platform/settings/packages">Settings → Packages</Link> to sell one.</Empty>}
         </Section>
         <Section title="Sessions">

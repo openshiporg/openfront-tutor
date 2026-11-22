@@ -1,4 +1,4 @@
-import { ActionForm } from '../lib/actions'
+import { ReviewHomeworkForm } from '../lib/forms'
 import { day, read, when } from '../lib/data'
 import { Empty, Field, Section, inputClass } from '../lib/ui'
 import { Page } from '../shell/Page'
@@ -11,9 +11,9 @@ export default async function HomeworkPage() {
   const { assigned, handedIn, reviewed, timezone: tz } = r.data
   const row = (h: any) => <span><Link className="underline" href={`/dashboard/platform/students/${h.student?.id}`}>{h.student?.firstName}</Link> · {h.title}{h.dueAt ? ` · due ${day(h.dueAt, tz)}` : ''}</span>
   const review = (h: any) => (
-    <ActionForm op="reviewHomework" submit="Mark reviewed" className="grid gap-2" toVars={(f) => ({ id: h.id, feedback: f.get('feedback') })}>
+    <ReviewHomeworkForm id={h.id} className="grid gap-2">
       <Field label="Feedback for the family"><input name="feedback" className={inputClass} /></Field>
-    </ActionForm>
+    </ReviewHomeworkForm>
   )
   return (
     <Page title="Homework">

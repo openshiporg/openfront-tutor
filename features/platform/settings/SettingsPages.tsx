@@ -4,7 +4,8 @@ import { CopyLink, LinkMaker } from '../lib/actions'
 import { label, lists, money, read, when } from '../lib/data'
 import { Empty, Notice, Pill, Section } from '../lib/ui'
 import { Page } from '../shell/Page'
-import { BookingRulesForm, BusinessForm, DAYS, HoursRow, PackageForm, PaymentSettingsForm, SessionTypeForm, SubjectForm } from './SettingsForms'
+import { BookingRulesForm, BusinessForm, HoursRow, PackageForm, PaymentSettingsForm, SessionTypeForm, SubjectForm } from './SettingsForms'
+import { DAYS } from './days'
 
 const PROFILE_FIELDS = 'id businessName tutorName slug headline bio photoUrl heroImageUrl qualifications phone email city country timezone currencyCode teachesOnline teachesInPerson inPersonArea defaultMeetingUrl bookingOpen reviewsEnabled slotMinutes bufferMinutes minNoticeHours maxAdvanceDays cancellationWindowHours lateCancelPercent noShowPercent unpaidHoldMinutes reschedulesAllowed paymentInstructions policiesText invoiceDueDays'
 
