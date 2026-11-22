@@ -29,7 +29,7 @@ export function ClaimForm({ bookingId, bookingToken, familyId, token, askEmail, 
     }}>
       {askName ? <Field label="Your name"><input name="name" maxLength={120} autoComplete="name" className={inputClass} /></Field> : null}
       {askEmail ? (
-        <Field label="Email" hint={askEmail === 'optional' ? 'Leave empty to use the email you booked with. Needed if you booked with a phone number.' : 'You will sign in with this email.'}>
+        <Field label="Email" hint={askEmail === 'optional' ? (familyId ? 'Leave empty to use the email your tutor has for you.' : 'Leave empty to use the email you booked with. Needed if you booked with a phone number.') : 'You will sign in with this email.'}>
           <input name="email" type="email" required={askEmail !== 'optional'} autoComplete="email" className={inputClass} />
         </Field>
       ) : null}

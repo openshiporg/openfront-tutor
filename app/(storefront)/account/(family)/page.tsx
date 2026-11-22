@@ -38,7 +38,7 @@ export default async function Page() {
           <p className="mt-2 text-[13.5px] font-semibold uppercase tracking-wide text-ink-soft">Package time</p>
           <p className="font-display text-[26px] font-semibold text-ink">{active.length ? duration(d.minutesLeft) : 'None'}</p>
         </Link>
-        <Link href="/account/invoices" className="rounded-2xl border border-line/70 bg-white/80 p-5 hover:border-wine/50">
+        <Link href={d.openInvoices.length ? '/account/invoices' : '/account/sessions?range=all'} className="rounded-2xl border border-line/70 bg-white/80 p-5 hover:border-wine/50">
           <FileText className="size-5 text-wine" aria-hidden />
           <p className="mt-2 text-[13.5px] font-semibold uppercase tracking-wide text-ink-soft">To pay</p>
           <p className="font-display text-[26px] font-semibold text-ink">{money(d.owingCents, c)}</p>
