@@ -3,6 +3,11 @@ import { Caveat, Dancing_Script, Lora, Source_Sans_3 } from 'next/font/google'
 import { StorefrontShell } from '@/features/storefront/screens/StorefrontShell'
 import { getHomeTutor } from '@/features/storefront/lib/data/public'
 import { displayName } from '@/features/storefront/lib/format'
+import { trustedOrigin } from '@/features/shared/trusted-origin'
+
+function siteBase() {
+  try { return new URL(trustedOrigin()) } catch { return undefined }
+}
 
 const serif = Lora({ variable: '--font-sf-serif', subsets: ['latin'], weight: ['500', '600', '700'], style: ['normal', 'italic'] })
 const script = Dancing_Script({ variable: '--font-sf-script', subsets: ['latin'], weight: ['600', '700'] })
@@ -15,6 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
   if (!t) return { title: 'Private tutoring', robots: { index: false, follow: false } }
   const name = displayName(t)
   return {
+    metadataBase: siteBase(),
     title: { default: t.headline ? `${name}: ${t.headline}` : name, template: `%s · ${name}` },
     description: t.bio?.slice(0, 160) || t.headline || `Book lessons with ${name}.`,
     openGraph: t.heroImageUrl || t.photoUrl ? { images: [{ url: (t.heroImageUrl || t.photoUrl)! }] } : undefined,

@@ -3,7 +3,7 @@ import { ArrowRight, CalendarDays, Clock, GraduationCap, Home, Laptop, MapPin, P
 import { getHomeTutor, getPublicTutor } from '../lib/data/public'
 import { getViewer } from '../lib/data/account'
 import type { PublicTutor } from '../lib/types'
-import { dayName, displayName, duration, firstName, hoursOf, minuteOfDay, modeLabel, money, priceLabel, sortDays, zoneName } from '../lib/format'
+import { dayName, displayName, duration, firstName, hoursOf, minuteOfDay, modeLabel, money, placeName, priceLabel, sortDays, zoneName } from '../lib/format'
 import { Photo } from '../components/Photo'
 import { ReviewCarousel } from '../components/ReviewCarousel'
 import { InquiryForm } from '../components/InquiryForm'
@@ -76,11 +76,14 @@ export default async function HomePage({ slug }: { slug?: string } = {}) {
   const headline = t.headline?.trim() || `Lessons with ${first}`
   const intro = firstParagraph(t.bio) || t.qualifications || ''
   const bioParas = (t.bio || '').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
-  const place = [t.city, t.country].filter(Boolean).join(', ')
+  const place = placeName(t.city, t.country)
   const hours = sortDays(t.hours).filter((h) => h.isWorking)
   const zone = zoneName(t.timezone)
   const subjectsForCards = t.subjects.length ? t.subjects : []
   const closingTitle = t.subjects.length === 1 ? `Ready to make progress in ${t.subjects[0].name}?` : 'Ready for your first lesson?'
+
+  // Rate and package cards: up to three a row, and a short last row sits centred instead of leaving an empty cell.
+  const cardCell = 'w-full sm:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.667rem)]'
 
   return (
     <main id="top">
@@ -92,9 +95,9 @@ export default async function HomePage({ slug }: { slug?: string } = {}) {
             <div aria-hidden className="absolute inset-y-0 right-0 hidden w-40 bg-gradient-to-r from-transparent to-paper lg:block" />
             <div aria-hidden className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-paper lg:hidden" />
           </div>
-          <div className="relative flex flex-col justify-center px-6 pb-10 pt-2 sm:px-10 lg:py-28 lg:pl-6 lg:pr-[6%]">
+          <div className="relative flex flex-col justify-center px-6 pb-10 pt-2 sm:px-10 lg:py-28 lg:pl-6 lg:pr-[8%]">
             <HeroSketch className="pointer-events-none absolute right-4 top-20 hidden h-36 w-60 text-ink/45 lg:block xl:right-8" />
-            <h1 className="relative max-w-[15ch] font-display text-[40px] font-semibold leading-[1.06] tracking-[-0.015em] text-ink sm:text-[52px] lg:text-[54px] xl:text-[60px]">{headline}</h1>
+            <h1 className="relative max-w-[15ch] font-display text-[40px] font-semibold leading-[1.06] tracking-[-0.015em] text-ink sm:text-[52px] lg:text-[46px] xl:text-[52px]">{headline}</h1>
             <Stroke className="mt-3" width={150} />
             {intro ? <p className="mt-6 max-w-[34ch] text-[17px] leading-relaxed text-ink sm:text-[18px] lg:pl-5">{intro}</p> : null}
             <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap lg:pl-5">
@@ -125,11 +128,11 @@ export default async function HomePage({ slug }: { slug?: string } = {}) {
       {subjectsForCards.length ? (
         <section id="lessons" className="mx-auto max-w-[1180px] scroll-mt-24 px-5 pb-4 pt-12 sm:px-8">
           <SectionTitle className="lg:ml-[13%]">{t.subjects.length === 1 ? `${t.subjects[0].name} lessons for your goals` : 'Lessons for your goals'}</SectionTitle>
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="flex flex-wrap justify-center gap-5">
             {subjectsForCards.map((s) => {
               const types = t.sessionTypes.filter((x) => x.subjectIds.includes(s.id))
               return (
-                <article key={s.id} className="grid overflow-hidden rounded-2xl bg-card-blush/80 shadow-[0_1px_2px_rgba(28,42,74,0.06)] sm:grid-cols-[38%_62%]">
+                <article key={s.id} className="grid w-full overflow-hidden rounded-2xl md:w-[calc(50%-0.625rem)] bg-card-blush/80 shadow-[0_1px_2px_rgba(28,42,74,0.06)] sm:grid-cols-[38%_62%]">
                   <div className="h-44 sm:h-auto sm:min-h-[168px]"><Photo src={s.imageUrl} alt={s.name} label={s.imageUrl ? undefined : s.name.slice(0, 1)} /></div>
                   <div className="p-5 sm:p-6">
                     <h3 className="flex items-center gap-2 font-display text-[21px] font-semibold text-ink"><GraduationCap className="size-5 text-wine" aria-hidden />{s.name}</h3>
@@ -178,12 +181,12 @@ export default async function HomePage({ slug }: { slug?: string } = {}) {
         <div className="mx-auto max-w-[1180px] px-5 sm:px-8">
           <SectionTitle sub={`Prices in ${t.currencyCode}. ${t.teachesOnline && t.teachesInPerson ? 'Online or in person.' : t.teachesOnline ? 'All lessons are online.' : 'Lessons are in person.'}`}>Lessons and rates</SectionTitle>
           {t.sessionTypes.length ? (
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="flex flex-wrap justify-center gap-4">
               {t.sessionTypes.map((s) => {
                 const canBook = t.bookingOpen && (known || s.openToNewFamilies)
                 const href = known ? `/account/book?type=${s.id}` : `/book/${t.slug}?type=${s.id}`
                 return (
-                  <li key={s.id}>
+                  <li key={s.id} className={cardCell}>
                     <Card className="flex h-full flex-col">
                       <div className="flex items-start justify-between gap-3">
                         <h3 className="font-display text-[19px] font-semibold text-ink">{s.name}</h3>
@@ -213,9 +216,9 @@ export default async function HomePage({ slug }: { slug?: string } = {}) {
             <div className="mt-10">
               <h3 className="flex items-center gap-2 font-display text-[22px] font-semibold italic text-ink"><Package className="size-5 text-wine" aria-hidden />Packages</h3>
               <p className="mt-1 text-[15px] text-ink-soft">Prepaid time at a lower rate. Each lesson uses its length from your balance, and your balance is always in your account.</p>
-              <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="mt-4 flex flex-wrap justify-center gap-4">
                 {t.packages.map((p) => (
-                  <li key={p.id}>
+                  <li key={p.id} className={cardCell}>
                     <Card className="flex h-full flex-col">
                       <div className="flex items-start justify-between gap-3">
                         <h4 className="font-display text-[18px] font-semibold text-ink">{p.name}</h4>
@@ -283,10 +286,6 @@ export default async function HomePage({ slug }: { slug?: string } = {}) {
 
       {/* Closing band. */}
       <section className="relative isolate overflow-hidden">
-        {t.heroImageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- tutor-supplied address
-          <img src={t.heroImageUrl} alt="" className="absolute inset-0 -z-10 size-full object-cover" />
-        ) : null}
         <div aria-hidden className="absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgba(64,60,104,0.86)_0%,rgba(125,29,52,0.72)_70%,rgba(28,42,74,0.92)_100%)]" />
         <div className="mx-auto flex max-w-3xl flex-col items-center px-6 py-14 text-center text-white sm:py-16">
           <h2 className="font-display text-[30px] font-semibold leading-tight sm:text-[38px]">{closingTitle}</h2>

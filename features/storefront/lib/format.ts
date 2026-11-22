@@ -154,3 +154,12 @@ export function tagline(t: { subjects: Array<{ name: string }>; city: string | n
   const where = t.city || (t.teachesOnline && !t.teachesInPerson ? 'Online' : '')
   return [subj ? `${subj} tutor` : 'Private tutor', where].filter(Boolean).join(' · ')
 }
+
+/** "Austin, United States" from a city and an ISO country code (or a country already written out). */
+export function placeName(city: string | null | undefined, country: string | null | undefined) {
+  let c = country?.trim() || ''
+  if (/^[A-Za-z]{2}$/.test(c)) {
+    try { c = new Intl.DisplayNames(['en'], { type: 'region' }).of(c.toUpperCase()) || c } catch { /* keep as written */ }
+  }
+  return [city?.trim(), c].filter(Boolean).join(', ')
+}

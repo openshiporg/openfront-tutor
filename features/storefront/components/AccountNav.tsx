@@ -19,7 +19,7 @@ const ITEMS = [
 ]
 
 export function AccountNav() {
-  const path = usePathname()
+  const path = usePathname() ?? ""
   return (
     <nav aria-label="Family account" className="-mx-5 overflow-x-auto px-5 lg:mx-0 lg:overflow-visible lg:px-0">
       <ul className="flex gap-1 lg:flex-col">
