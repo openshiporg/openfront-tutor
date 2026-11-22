@@ -1,3 +1,4 @@
-import { HomePage } from "@/features/dashboard/screens/HomePage";
+import { redirect } from 'next/navigation'
 
-export default HomePage;
+/** The tutor lands on Today; it links to first-run setup when the business is not set up yet. */
+export default function DashboardHome() { redirect('/dashboard/platform/today') }

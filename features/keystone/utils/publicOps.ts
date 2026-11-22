@@ -48,17 +48,18 @@ export async function publicTutor(prisma: PrismaClient, slug: string) {
   })
   if (!p) return null
   const ratings = p.reviews.map((r) => r.rating)
+  const takesCards = stripeOn() && Boolean(await cardProvider(db, p.id))
   return iso({
-    slug: p.slug, businessName: p.businessName, tutorName: p.tutorName, headline: p.headline, bio: p.bio, qualifications: p.qualifications,
+    id: p.id, slug: p.slug, businessName: p.businessName, tutorName: p.tutorName, headline: p.headline, bio: p.bio, qualifications: p.qualifications,
     photoUrl: p.photoUrl, heroImageUrl: p.heroImageUrl, phone: p.phone, email: p.email, city: p.city, country: p.country,
     timezone: p.timezone, currencyCode: p.currencyCode, teachesOnline: p.teachesOnline, teachesInPerson: p.teachesInPerson, inPersonArea: p.inPersonArea,
     bookingOpen: p.bookingOpen, minNoticeHours: p.minNoticeHours, maxAdvanceDays: p.maxAdvanceDays,
     cancellationWindowHours: p.cancellationWindowHours, lateCancelPercent: p.lateCancelPercent, noShowPercent: p.noShowPercent,
     unpaidHoldMinutes: p.unpaidHoldMinutes, reschedulesAllowed: p.reschedulesAllowed, policiesText: p.policiesText,
-    cardPayments: stripeOn() && Boolean(await cardProvider(db, p.id)), reviewsEnabled: p.reviewsEnabled,
+    cardPayments: takesCards, takesCards, reviewsEnabled: p.reviewsEnabled,
     subjects: p.subjects,
     sessionTypes: p.sessionTypes.map((t) => ({ ...t, subjectIds: t.subjects.map((s) => s.id), subjects: undefined })),
-    packages: p.packages,
+    packages: p.packages.map((x) => ({ ...x, appliesToIds: x.appliesTo.map((t) => t.id) })),
     hours: p.weeklyHours,
     reviews: p.reviewsEnabled ? p.reviews : [],
     rating: ratings.length ? { average: Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10, count: ratings.length } : null,
@@ -119,7 +120,7 @@ export async function bookFirstSession(prisma: PrismaClient, input: { slug: stri
   const tz = timezone || profile.timezone
   void notify(prisma, { profileId: profile.id, kind: 'booking_confirmed', to: visitor.email, subject: s.status === 'pending_payment' ? `Finish booking: ${type.name}` : `Booked: ${type.name} with ${profile.businessName}`, lines: [`Hi ${visitor.guardianName},`, s.status === 'pending_payment' ? `Your time is held until ${fmtWhen(s.holdEndsAt!, tz)}. Pay to confirm it.` : `${type.name} for ${visitor.studentName} is booked for ${fmtWhen(s.startsAt, tz)}.`, 'Open your booking to see the lesson link, add it to your calendar, pay, move or cancel it.'], link, linkLabel: 'Open your booking', replyTo: profile.email, sessionId: s.id })
   void notify(prisma, { profileId: profile.id, kind: 'tutor_new_booking', to: profile.email, subject: `New booking: ${visitor.guardianName}, ${fmtWhen(s.startsAt, profile.timezone)}`, lines: [`${visitor.guardianName} booked ${type.name} for ${visitor.studentName} (${visitor.studentLevel || 'level not given'}).`, visitor.needs ? `They wrote: ${visitor.needs}` : ''].filter(Boolean), link: `${origin()}/dashboard/platform/sessions/${s.id}`, linkLabel: 'Open in your dashboard', sessionId: s.id })
-  return { bookingId: s.id, token: result.token, status: s.status, funding: s.funding, needsPayment: s.status === 'pending_payment', holdEndsAt: s.holdEndsAt?.toISOString() ?? null, bookingUrl: link }
+  return { bookingId: s.id, sessionId: s.id, token: result.token, status: s.status, funding: s.funding, needsPayment: s.status === 'pending_payment', holdEndsAt: s.holdEndsAt?.toISOString() ?? null, bookingUrl: link }
 }
 
 async function bookingByToken(db: Db, id: string, token: string) {
@@ -153,7 +154,7 @@ async function sessionView(prisma: PrismaClient, id: string) {
     payments: reported,
     tutor: { slug: p.slug, businessName: p.businessName, tutorName: p.tutorName, photoUrl: p.photoUrl, phone: p.phone, email: p.email, timezone: p.timezone },
     familyTimezone: s.family?.timezone || '', guardianName: s.family?.guardianName ?? '', hasAccount: Boolean(s.family?.userId),
-    canPayByCard: card, payDirectly: payable && !card, paymentInstructions: payable || s.funding === 'invoice' ? p.paymentInstructions : '',
+    canPayByCard: card, takesCards: card, payDirectly: payable && !card, paymentInstructions: payable || s.funding === 'invoice' ? p.paymentInstructions : '',
     canCancel: Boolean(terms) && s.startsAt.getTime() > Date.now(), cancelTerms: terms?.text ?? null, cancelIsLate: terms?.late ?? false,
     canReschedule: canMove, rescheduleClosedReason: s.status === 'scheduled' && !canMove ? (insideWindow(p, s.startsAt) ? `Moving closes ${p.cancellationWindowHours} hours before the session. Contact your tutor.` : 'This session has been moved the most times allowed. Contact your tutor.') : null,
     calendarUrl: `/api/calendar/session/${s.id}`,
@@ -252,7 +253,7 @@ async function invoiceView(prisma: PrismaClient, id: string) {
   return iso({
     ...inv, profileId: undefined, family: undefined, guardianName: inv.family?.guardianName ?? '', overdue: isOverdue(inv), balanceCents: inv.totalCents - inv.paidCents,
     currencyCode: p.currencyCode, tutor: { businessName: p.businessName, email: p.email, phone: p.phone, slug: p.slug },
-    canPayByCard: card, paymentInstructions: open ? p.paymentInstructions : '',
+    canPayByCard: card, takesCards: card, paymentInstructions: open ? p.paymentInstructions : '',
   })
 }
 

@@ -40,6 +40,7 @@ import { Home, Database, ChevronRight, Package } from 'lucide-react'
 import { Logo, LogoIcon } from '@/features/dashboard/components/Logo'
 import { UserProfileClient } from './UserProfileClient'
 import { visibleSidebarLists } from '../lib/sidebarAccess'
+import { platformNavItems } from '@/features/platform/lib/navigation'
 
 interface User {
   id: string;
@@ -125,6 +126,23 @@ export function Sidebar({ adminMeta, user }: SidebarProps) {
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
+        {/* The tutor's own pages (dissertation §6.2) */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Your tutoring</SidebarGroupLabel>
+          <SidebarMenu>
+            {platformNavItems.map((item) => (
+              <SidebarMenuItem key={item.href}>
+                <SidebarMenuButton asChild isActive={isLinkActive(`/dashboard${item.href}`)}>
+                  <Link href={`/dashboard${item.href}`} onClick={() => setOpenMobile(false)}>
+                    <item.icon className="h-4 w-4" />
+                    <span>{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
           </SidebarMenu>
         </SidebarGroup>
 

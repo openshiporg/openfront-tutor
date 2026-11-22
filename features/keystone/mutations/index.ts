@@ -37,8 +37,8 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         redirectToInit: Boolean
         publicTutor(slug: String!): JSON
         homeTutor: JSON
-        publicSlots(slug: String!, sessionTypeId: ID!, date: String!, timezone: String, excludeSessionId: ID, token: String): CommandResult!
-        publicOpenDays(slug: String!, sessionTypeId: ID!, from: String!, days: Int, timezone: String): CommandResult!
+        publicSlots(slug: String!, sessionTypeId: ID!, date: String!, timezone: String, timeZone: String, excludeSessionId: ID, token: String): CommandResult!
+        publicOpenDays(slug: String!, sessionTypeId: ID!, from: String!, days: Int, timezone: String, timeZone: String): CommandResult!
         publicBooking(id: ID!, token: String!): CommandResult!
         publicInvoice(id: ID!, token: String!): CommandResult!
         myFamily: CommandResult!
@@ -85,8 +85,8 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
         redirectToInit,
         publicTutor: (_r: unknown, a: A, c: Ctx) => pub.publicTutor(c.prisma, a.slug),
         homeTutor: (_r: unknown, _a: A, c: Ctx) => pub.homeTutor(c.prisma),
-        publicSlots: (_r: unknown, a: A, c: Ctx) => run(() => pub.publicSlots(c.prisma, a as never, c.session)),
-        publicOpenDays: (_r: unknown, a: A, c: Ctx) => run(() => pub.publicOpenDays(c.prisma, a as never)),
+        publicSlots: (_r: unknown, a: A, c: Ctx) => run(() => pub.publicSlots(c.prisma, { ...a, timezone: a.timezone ?? a.timeZone } as never, c.session)),
+        publicOpenDays: (_r: unknown, a: A, c: Ctx) => run(() => pub.publicOpenDays(c.prisma, { ...a, timezone: a.timezone ?? a.timeZone } as never)),
         publicBooking: (_r: unknown, a: A, c: Ctx) => run(() => pub.publicBooking(c.prisma, a.id, a.token)),
         publicInvoice: (_r: unknown, a: A, c: Ctx) => run(() => pub.publicInvoice(c.prisma, a.id, a.token)),
         myFamily: (_r: unknown, _a: A, c: Ctx) => run(() => pub.myFamily(c.prisma, c.session)),
