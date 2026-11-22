@@ -30,6 +30,7 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
       type CommandResult { success: Boolean!, error: String, data: JSON }
       input VisitorInput { guardianName: String!, email: String, phone: String, studentName: String!, studentLevel: String, message: String, timezone: String }
       input StudentInput { id: ID, firstName: String!, lastName: String, level: String, school: String, goals: String, birthYear: Int }
+      ${tutorTypeDefs.inputs}
       input ContactInput { guardianName: String, phone: String, secondContactName: String, secondContactPhone: String, address: String, timezone: String }
 
       type Query {
