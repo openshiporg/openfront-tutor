@@ -31,7 +31,7 @@ export async function runJobs(request: Request) {
     for (const s of soon) {
       const claimed = await db.session.updateMany({ where: { id: s.id, reminderSentAt: null }, data: { reminderSentAt: new Date() } })
       if (!claimed.count) continue
-      const when = new Intl.DateTimeFormat('en-US', { timeZone: s.family?.timezone || p.timezone, dateStyle: 'full', timeStyle: 'short', timeZoneName: 'short' }).format(s.startsAt)
+      const when = new Intl.DateTimeFormat('en-US', { timeZone: s.family?.timezone || p.timezone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(s.startsAt)
       await notify(prisma, { profileId: p.id, kind: 'reminder', to: s.family?.email, subject: `Reminder: ${s.typeNameSnapshot} ${when}`, lines: [`Hi ${s.family?.guardianName ?? ''},`, `${s.typeNameSnapshot} with ${p.businessName} is on ${when}.`], link: `${trustedOrigin()}/account/sessions/${s.id}`, linkLabel: 'Open the session', replyTo: p.email, sessionId: s.id })
       reminders++
     }

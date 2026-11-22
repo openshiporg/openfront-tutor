@@ -23,7 +23,7 @@ const origin = () => trustedOrigin()
 export const bookingLink = (id: string, token: string) => `${origin()}/booking/${encodeURIComponent(id)}?t=${encodeURIComponent(token)}`
 export const invoiceLink = (id: string, token: string) => `${origin()}/invoice/${encodeURIComponent(id)}?t=${encodeURIComponent(token)}`
 
-const fmtWhen = (d: Date, tz: string) => new Intl.DateTimeFormat('en-US', { timeZone: tz, dateStyle: 'full', timeStyle: 'short', timeZoneName: 'short' }).format(d)
+const fmtWhen = (d: Date, tz: string) => new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(d)
 
 // ---------------- public ----------------
 

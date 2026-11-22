@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "migrate:gen": "keystone build --no-ui && tsx features/keystone/view-order/generate-view-order.ts && keystone prisma migrate dev",
     "migrate": "prisma migrate deploy",
-    "seed:practice": "tsx scripts/seed-practice.ts"
+    "seed:practice": "tsx scripts/seed-practice.ts",
+    "test": "node scripts/run-tests.mjs",
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run lint && npm test"
   },
   "dependencies": {
     "@ai-sdk/mcp": "^1.0.13",

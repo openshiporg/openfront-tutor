@@ -8,7 +8,8 @@ export const Role = list({
   access: {
     operation: {
       ...allOperations(permissions.canManageRoles),
-      query: isSignedIn,
+      // Session data reads the caller's role with sudo, so a family needs no read access here (§9.15).
+      query: (args) => isSignedIn(args) && Boolean(args.session?.data.role?.canSeeOtherPeople || args.session?.data.role?.canManageRoles),
     },
   },
   ui: {
