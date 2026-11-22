@@ -125,6 +125,7 @@ const viewMappings = {
   [`@keystone-6/core/fields/types/float/views`]: `float`,
   [`@keystone-6/core/fields/types/decimal/views`]: `decimal`,
   [`@keystone-6/core/fields/types/image/views`]: `image`,
+  [`@keystone-6/core/fields/types/file/views`]: `file`,
   [`@keystone-6/core/fields/types/virtual/views`]: `virtual`,
   [`@keystone-6/core/fields/types/multiselect/views`]: `multiselect`,
   [`@keystone-6/fields-document/views`]: `document`,

@@ -41,6 +41,11 @@ const FIELD_GRAPHQL_SELECTIONS: Record<string, (fieldPath: string, fieldMeta?: a
     width
     height
   }`,
+  file: (fieldPath) => `${fieldPath} {
+    url
+    filename
+    filesize
+  }`,
   // Add more field types as needed
 }
 

@@ -17,5 +17,5 @@ export const VIEW_ORDER = [
   "checkbox",
   "json",
   "integer",
-  "@keystone-6/core/fields/types/file/views"
+  "file"
 ];

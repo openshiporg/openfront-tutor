@@ -15,6 +15,7 @@ import * as password from "./password"
 import * as virtual from "./virtual"
 import * as relationship from "./relationship"
 import * as image from "./image"
+import * as file from "./file"
 import * as document from "./document"
 import * as checkbox from "./checkbox"
 import * as bigInt from "./bigInt"
@@ -140,6 +141,7 @@ export const fieldTypes: FieldTypesRegistry = {
   virtual,
   relationship,
   image,
+  file,
   document,
   checkbox,
   decimal,
