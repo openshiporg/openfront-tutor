@@ -7,7 +7,7 @@ import { Button, Field, Notice, inputClass } from './ui'
 
 /** S7: set a password to create the family account, from a booking or from an invite. */
 export function ClaimForm({ bookingId, bookingToken, familyId, token, askEmail, askName, next = '/account' }: {
-  bookingId?: string; bookingToken?: string; familyId?: string; token?: string; askEmail?: boolean; askName?: boolean; next?: string
+  bookingId?: string; bookingToken?: string; familyId?: string; token?: string; askEmail?: boolean | 'optional'; askName?: boolean; next?: string
 }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -28,7 +28,11 @@ export function ClaimForm({ bookingId, bookingToken, familyId, token, askEmail, 
       })
     }}>
       {askName ? <Field label="Your name"><input name="name" maxLength={120} autoComplete="name" className={inputClass} /></Field> : null}
-      {askEmail ? <Field label="Email" hint="You will sign in with this email."><input name="email" type="email" required autoComplete="email" className={inputClass} /></Field> : null}
+      {askEmail ? (
+        <Field label="Email" hint={askEmail === 'optional' ? 'Leave empty to use the email you booked with. Needed if you booked with a phone number.' : 'You will sign in with this email.'}>
+          <input name="email" type="email" required={askEmail !== 'optional'} autoComplete="email" className={inputClass} />
+        </Field>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Password"><input name="password" type="password" required minLength={8} autoComplete="new-password" className={inputClass} /></Field>
         <Field label="Password again"><input name="again" type="password" required minLength={8} autoComplete="new-password" className={inputClass} /></Field>

@@ -31,7 +31,7 @@ export default async function BookingStatusPage({ id, token, paid }: { id: strin
     <Card>
       <h2 className="font-display text-[20px] font-semibold text-ink">Create your family account</h2>
       <p className="mt-1 text-[15px] text-ink-soft">Set a password to see all your lessons in one place, book again, buy packages, see notes and homework, and pay invoices.</p>
-      <div className="mt-4"><ClaimForm bookingId={s.id} bookingToken={token} /></div>
+      <div className="mt-4"><ClaimForm bookingId={s.id} bookingToken={token} askEmail="optional" /></div>
     </Card>
   ) : viewer && !viewer.isTutor ? (
     <p className="text-[15px] text-ink-soft"><Link href="/account" className="font-semibold text-wine underline">Go to your family account</Link></p>
