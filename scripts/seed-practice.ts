@@ -82,7 +82,7 @@ async function main() {
   if (!email || !password || password.length < 8) throw new Error('Set SEED_TUTOR_EMAIL and SEED_TUTOR_PASSWORD (8+ characters).')
   const prisma = keystoneContext.prisma as PrismaClient
   const sudo = keystoneContext.sudo()
-  if (await prisma.tutorProfile.findUnique({ where: { slug: SLUG } })) { console.log(`Already seeded: /t/${SLUG}`); return }
+  if (await prisma.tutorProfile.findUnique({ where: { slug: SLUG } })) { console.log(`Already seeded: /t/${SLUG}. Tutor login: ${email}; guardian login: ${FAMILIES[0].email} (if SEED_FAMILY_PASSWORD was set on the first run).`); return }
 
   // The tutor's account (Keystone hashes the password) and role.
   let user = await prisma.user.findUnique({ where: { email } })
@@ -234,6 +234,8 @@ async function main() {
     if (!c.ok) throw new Error(`Ledger invariant failed on ${p.id}: stored ${c.stored}, ledger ${c.ledger}`)
   }
   const counts = await Promise.all([prisma.family.count({ where: { profileId } }), prisma.student.count({ where: { profileId } }), prisma.session.count({ where: { profileId } }), prisma.invoice.count({ where: { profileId } })])
+  console.log(`Tutor login: ${email} (the SEED_TUTOR_PASSWORD you set)`)
+  console.log(famPassword && famPassword.length >= 8 ? `Guardian login: ${FAMILIES[0].email} (the SEED_FAMILY_PASSWORD you set)` : 'No guardian login made: set SEED_FAMILY_PASSWORD (8+ characters) to add one.')
   console.log(`Seeded /t/${SLUG}: ${counts[0]} families, ${counts[1]} students, ${counts[2]} sessions, ${counts[3]} invoices; ledger invariant holds on ${purchases.length} packages.`)
 }
 
