@@ -4,7 +4,8 @@ import type { StorageConfig } from '@keystone-6/core/types'
 
 /**
  * Homework and resource files. S3-compatible storage when its bucket is set,
- * otherwise files on the server's disk served by `/api/files/[name]`. Links
+ * otherwise files on the server's disk. Either way a file is read only through
+ * `/api/files/<homework|resource>/<id>`, which checks who is asking. Links
  * (linkUrl) always work, with or without file storage.
  */
 export function fileStorage(env: NodeJS.ProcessEnv = process.env): StorageConfig {
@@ -25,7 +26,8 @@ export function fileStorage(env: NodeJS.ProcessEnv = process.env): StorageConfig
     kind: 'local',
     type: 'file',
     storagePath: uploadDir(env),
-    generateUrl: (file) => `/api/files${file}`,
+    // Not a public path: the guarded route above serves the bytes.
+    generateUrl: (file) => `/api/files/stored${file}`,
     serverRoute: null,
   }
 }

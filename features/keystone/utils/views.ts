@@ -21,7 +21,8 @@ export const familyStudentSelect = {
 } satisfies Prisma.StudentSelect
 
 export const familyHomeworkSelect = {
-  id: true, title: true, instructions: true, dueAt: true, linkUrl: true, file_filename: true, file_filesize: true, status: true,
+  id: true, title: true, instructions: true, dueAt: true, linkUrl: true, file_filename: true, file_filesize: true, // fileUrl = /api/files/homework/<id> when file_filename is set
+  status: true,
   handedInAt: true, guardianComment: true, handInUrl: true, feedback: true, reviewedAt: true, createdAt: true,
   student: { select: { id: true, firstName: true } },
 } satisfies Prisma.HomeworkSelect
