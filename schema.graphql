@@ -579,6 +579,7 @@ type TutorProfile {
   headline: String
   bio: String
   photoUrl: String
+  heroImageUrl: String
   qualifications: String
   phone: String
   email: String
@@ -676,6 +677,7 @@ input TutorProfileWhereInput {
   headline: StringFilter
   bio: StringFilter
   photoUrl: StringFilter
+  heroImageUrl: StringFilter
   qualifications: StringFilter
   phone: StringFilter
   email: StringFilter
@@ -894,6 +896,7 @@ input TutorProfileOrderByInput {
   headline: OrderDirection
   bio: OrderDirection
   photoUrl: OrderDirection
+  heroImageUrl: OrderDirection
   qualifications: OrderDirection
   phone: OrderDirection
   email: OrderDirection
@@ -933,6 +936,7 @@ input TutorProfileUpdateInput {
   headline: String
   bio: String
   photoUrl: String
+  heroImageUrl: String
   qualifications: String
   phone: String
   email: String
@@ -1169,6 +1173,7 @@ input TutorProfileCreateInput {
   headline: String
   bio: String
   photoUrl: String
+  heroImageUrl: String
   qualifications: String
   phone: String
   email: String
@@ -1349,6 +1354,8 @@ type Subject {
   profile: TutorProfile
   name: String
   levels: String
+  description: String
+  imageUrl: String
   sortOrder: Int
   active: Boolean
   sessionTypes(where: SessionTypeWhereInput! = {}, orderBy: [SessionTypeOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: SessionTypeWhereUniqueInput): [SessionType!]
@@ -1371,6 +1378,8 @@ input SubjectWhereInput {
   profile: TutorProfileWhereInput
   name: StringFilter
   levels: StringFilter
+  description: StringFilter
+  imageUrl: StringFilter
   sortOrder: IntNullableFilter
   active: BooleanFilter
   sessionTypes: SessionTypeManyRelationFilter
@@ -1394,6 +1403,8 @@ input SubjectOrderByInput {
   id: OrderDirection
   name: OrderDirection
   levels: OrderDirection
+  description: OrderDirection
+  imageUrl: OrderDirection
   sortOrder: OrderDirection
   active: OrderDirection
   createdAt: OrderDirection
@@ -1404,6 +1415,8 @@ input SubjectUpdateInput {
   profile: TutorProfileRelateToOneForUpdateInput
   name: String
   levels: String
+  description: String
+  imageUrl: String
   sortOrder: Int
   active: Boolean
   sessionTypes: SessionTypeRelateToManyForUpdateInput
@@ -1421,6 +1434,8 @@ input SubjectCreateInput {
   profile: TutorProfileRelateToOneForCreateInput
   name: String
   levels: String
+  description: String
+  imageUrl: String
   sortOrder: Int
   active: Boolean
   sessionTypes: SessionTypeRelateToManyForCreateInput
@@ -4457,6 +4472,28 @@ type Mutation {
   createInitialUser(data: CreateInitialUserInput!): UserAuthenticationWithPasswordSuccess!
   sendUserPasswordResetLink(email: String!): Boolean!
   redeemUserPasswordResetToken(email: String!, token: String!, password: String!): RedeemUserPasswordResetTokenResult
+  bookFirstSession(slug: String!, sessionTypeId: ID!, startsAt: String!, visitor: VisitorInput!, mode: String): CommandResult!
+  payForBooking(id: ID!, token: String!): CommandResult!
+  confirmBookingPayment(id: ID!, token: String!): CommandResult!
+  cancelMyBooking(id: ID!, token: String!, reason: String): CommandResult!
+  rescheduleMyBooking(id: ID!, token: String!, startsAt: String!): CommandResult!
+  sendInquiry(slug: String!, name: String!, email: String, phone: String, studentLevel: String, subject: String, message: String): CommandResult!
+  claimFamilyAccount(familyId: ID, token: String, bookingId: ID, bookingToken: String, email: String, name: String, password: String!): CommandResult!
+  payInvoiceByLink(id: ID!, token: String!): CommandResult!
+  bookSession(sessionTypeId: ID!, startsAt: String!, studentIds: [ID!]!, message: String, mode: String): CommandResult!
+  cancelSession(id: ID!, reason: String): CommandResult!
+  rescheduleSession(id: ID!, startsAt: String!): CommandResult!
+  payForSession(id: ID!): CommandResult!
+  confirmSessionPayment(id: ID!): CommandResult!
+  saveStudent(student: StudentInput!): CommandResult!
+  handInHomework(id: ID!, comment: String, url: String): CommandResult!
+  buyPackage(packageId: ID!, method: String!): CommandResult!
+  confirmPackagePayment(purchaseId: ID!): CommandResult!
+  payInvoice(id: ID!): CommandResult!
+  confirmInvoicePayment(id: ID!, token: String): CommandResult!
+  reportPayment(target: String!, targetId: ID!, amountCents: Int!, method: String!, reference: String!): CommandResult!
+  submitReview(rating: Int!, body: String, displayName: String): CommandResult!
+  updateMyContact(contact: ContactInput!): CommandResult!
 }
 
 union UserAuthenticationWithPasswordResult = UserAuthenticationWithPasswordSuccess | UserAuthenticationWithPasswordFailure
@@ -4582,6 +4619,23 @@ type Query {
   authenticatedItem: AuthenticatedItem
   validateUserPasswordResetToken(email: String!, token: String!): ValidateUserPasswordResetTokenResult
   redirectToInit: Boolean
+  publicTutor(slug: String!): JSON
+  homeTutor: JSON
+  publicSlots(slug: String!, sessionTypeId: ID!, date: String!, timezone: String, excludeSessionId: ID, token: String): CommandResult!
+  publicOpenDays(slug: String!, sessionTypeId: ID!, from: String!, days: Int, timezone: String): CommandResult!
+  publicBooking(id: ID!, token: String!): CommandResult!
+  publicInvoice(id: ID!, token: String!): CommandResult!
+  myFamily: CommandResult!
+  mySessions(range: String): CommandResult!
+  mySession(id: ID!): CommandResult!
+  myStudents: CommandResult!
+  myHomework(status: String): CommandResult!
+  myPackages: CommandResult!
+  myInvoices: CommandResult!
+  myInvoice(id: ID!): CommandResult!
+  myResources: CommandResult!
+  myProgress(studentId: ID!): CommandResult!
+  myCalendarFeedUrl: CommandResult!
 }
 
 union AuthenticatedItem = User
@@ -4720,4 +4774,39 @@ type KeystoneAdminUISort {
 enum KeystoneAdminUISortDirection {
   ASC
   DESC
+}
+
+type CommandResult {
+  success: Boolean!
+  error: String
+  data: JSON
+}
+
+input VisitorInput {
+  guardianName: String!
+  email: String
+  phone: String
+  studentName: String!
+  studentLevel: String
+  message: String
+  timezone: String
+}
+
+input StudentInput {
+  id: ID
+  firstName: String!
+  lastName: String
+  level: String
+  school: String
+  goals: String
+  birthYear: Int
+}
+
+input ContactInput {
+  guardianName: String
+  phone: String
+  secondContactName: String
+  secondContactPhone: String
+  address: String
+  timezone: String
 }
