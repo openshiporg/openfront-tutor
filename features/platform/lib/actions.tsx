@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, type ReactNode } from 'react'
+import { useEffect, useState, useTransition, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { Btn, Notice } from './ui'
@@ -26,12 +26,35 @@ function useRun(onDone?: (data: unknown) => void) {
   return { run, error, info, pending }
 }
 
+/**
+ * A button that asks on the page before it acts. Not window.confirm: a dismissed or
+ * blocked browser dialog made the click do nothing. Disabled until the page is live,
+ * so an early click is visibly not taken.
+ */
+export function ConfirmButton({ label, confirm, onConfirm, variant = 'raised', pending, pendingLabel = 'Working…', yesLabel }: { label: string; confirm?: string; onConfirm: () => void; variant?: 'raised' | 'primary' | 'danger'; pending?: boolean; pendingLabel?: string; yesLabel?: string }) {
+  const [live, setLive] = useState(false)
+  const [asking, setAsking] = useState(false)
+  useEffect(() => setLive(true), [])
+  if (asking && confirm) {
+    return (
+      <span role="group" aria-label={confirm} className="inline-grid gap-1.5 rounded-md border p-2">
+        <span className="text-sm">{confirm}</span>
+        <span className="flex flex-wrap gap-2">
+          <Btn variant={variant === 'raised' ? 'primary' : variant} onClick={() => { setAsking(false); onConfirm() }}>{yesLabel ?? `Yes, ${label.charAt(0).toLowerCase()}${label.slice(1)}`}</Btn>
+          <Btn onClick={() => setAsking(false)}>Cancel</Btn>
+        </span>
+      </span>
+    )
+  }
+  return <Btn variant={variant} disabled={!live || pending} onClick={() => (confirm ? setAsking(true) : onConfirm())}>{pending ? pendingLabel : label}</Btn>
+}
+
 /** One button that runs one tutor operation, with an optional confirmation. */
 export function ActionButton({ op, vars, label, variant = 'raised', confirm, done, after }: { op: string; vars: Record<string, unknown>; label: string; variant?: 'raised' | 'primary' | 'danger'; confirm?: string; done?: (data: any) => ReactNode; after?: (data: any) => void }) {
   const { run, error, info, pending } = useRun(after)
   return (
     <span className="inline-grid gap-1.5">
-      <Btn variant={variant} disabled={pending} onClick={() => { if (confirm && !window.confirm(confirm)) return; run(() => runOperation(op, vars), done) }}>{pending ? 'Working…' : label}</Btn>
+      <ConfirmButton variant={variant} label={label} confirm={confirm} pending={pending} onConfirm={() => run(() => runOperation(op, vars), done)} />
       {error ? <Notice tone="alert">{error}</Notice> : null}
       {info ? <Notice>{info}</Notice> : null}
     </span>
@@ -89,7 +112,7 @@ export function DeleteItemButton({ list, id, label = 'Remove', confirm = 'Remove
   const { run, error, pending } = useRun()
   return (
     <span className="inline-grid gap-1.5">
-      <Btn variant="danger" disabled={pending} onClick={() => { if (window.confirm(confirm)) run(() => deleteItem(list, id)) }}>{label}</Btn>
+      <ConfirmButton variant="danger" label={label} confirm={confirm} pending={pending} onConfirm={() => run(() => deleteItem(list, id))} />
       {error ? <Notice tone="alert">{error}</Notice> : null}
     </span>
   )
