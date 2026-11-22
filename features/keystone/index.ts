@@ -4,7 +4,7 @@ import "dotenv/config";
 import { models } from "./models";
 import { statelessSessions } from "@keystone-6/core/session";
 import { extendGraphqlSchema } from "./mutations";
-import { sendPasswordResetEmail } from "./lib/mail";
+import { RESET_TOKEN_MINUTES, sendPasswordResetEmail } from "./lib/mail";
 import { withMcpBearerSessions } from "./mcp-oauth/session";
 import { ROLE_SESSION_FIELDS, TUTOR_ROLE } from "./access";
 import { fileStorage } from "./lib/storage";
@@ -27,6 +27,7 @@ const { withAuth } = createAuth({
     itemData: { role: { create: { ...TUTOR_ROLE } } },
   },
   passwordResetLink: {
+    tokensValidForMins: RESET_TOKEN_MINUTES,
     async sendToken(args) {
       await sendPasswordResetEmail(args);
     },

@@ -90,7 +90,7 @@ Pages are under `/dashboard/platform/` (thin wrappers in `app/dashboard/(admin)/
 | P13 | Weekly hours | settings/hours | WeeklyHours create/update | Sidebar → Settings → Weekly hours |
 | P14 | Families list | families | `familiesOverview(status, search)`; add a family: Family create | Sidebar → Families |
 | P15 | Family page: contacts, students, billing mode, sessions, packages and ledger, invoices, payments, private notes | families/[id] | `tutorFamily(id)`, Family update, `saveStudentAsTutor` | Families → a family |
-| P16 | Invite a family; reset an invite | families/[id] | `inviteFamily(familyId, send)` | Family page |
+| P16 | Invite a family; replace an invite; issue a password link for a claimed account | families/[id] | `inviteFamily(familyId, send)` returns a claim link for a new account or a one-time Keystone `/account/reset` link for a claimed account (60 minutes; new link replaces the old). Link is always available to copy, including without SMTP. | Family page → Account |
 | P17 | Block or pause a family | families/[id] | Family update `status` | Family page |
 | P18 | Student page | students/[id] | `tutorStudent(id)`, `saveStudentAsTutor` | Family page / Today → student |
 | P19 | Progress marks | students/[id] | ProgressMark create/delete | Student page |

@@ -24,7 +24,7 @@ export default async function FamilyPage({ params }: { params: Promise<{ id: str
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Contact and billing"><FamilyDetailsForm f={f} /></Section>
         <Section title="Account">
-          {f.hasAccount ? <p className="text-sm">{f.guardianName} signs in with {f.email}. They can reset their password from the sign-in page.</p> : <InviteButton familyId={f.id} hasEmail={Boolean(f.email)} open={f.inviteOpen} />}
+          <InviteButton familyId={f.id} hasEmail={Boolean(f.email)} open={f.inviteOpen} account={f.hasAccount ? { name: f.guardianName, email: f.accountEmail || f.email } : null} />
           <div className="flex flex-wrap gap-2 text-sm">
             <Link className="underline" href={`/dashboard/platform/calendar`}>Book a session (calendar)</Link>
             <Link className="underline" href={`/dashboard/platform/calendar/series`}>Weekly series</Link>

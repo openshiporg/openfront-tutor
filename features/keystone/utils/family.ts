@@ -41,11 +41,11 @@ export function cleanVisitor(input: { guardianName?: unknown; email?: unknown; p
   return { guardianName, email, phone, studentName, studentLevel: cleanText(input.studentLevel, 80), needs: cleanText(input.needs, 1000) }
 }
 
-/** Tutor: a private invite link for a family (a new one replaces the old). */
+/** Tutor: a private invite link for a family without an account (a new one replaces the old). */
 export async function inviteFamily(db: Db, profileId: string, familyId: string) {
   const family = await db.family.findFirst({ where: { id: familyId, profileId }, select: { id: true, userId: true, email: true, guardianName: true } })
   if (!family) throw new CommandError('Choose a family.')
-  if (family.userId) throw new CommandError('This family already has an account. They can reset their password from the sign-in page.')
+  if (family.userId) throw new CommandError('This family already has an account. Send them a password link instead.')
   const access = createPublicAccessToken()
   await db.family.update({ where: { id: family.id }, data: { inviteTokenHash: access.hash } })
   return { familyId: family.id, token: access.token, email: family.email, guardianName: family.guardianName }

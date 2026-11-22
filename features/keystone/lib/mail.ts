@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { createTransport, type Transporter } from "nodemailer";
 
 import { trustedOrigin } from "../../shared/trusted-origin";
@@ -24,6 +25,24 @@ function mailer() {
 export function passwordResetUrl(token: string, audience: "staff" | "family", env: NodeJS.ProcessEnv = process.env) {
   const path = audience === "staff" ? "/dashboard/reset" : "/account/reset";
   return `${trustedOrigin(env)}${path}?token=${encodeURIComponent(token)}`;
+}
+
+/** Minutes a reset link stays valid (Keystone tokensValidForMins), long enough for a link sent by text. */
+export const RESET_TOKEN_MINUTES = 60;
+
+/**
+ * Issues a Keystone password-reset token for one user, exactly as
+ * sendUserPasswordResetLink does (same token shape, hashed by Keystone's
+ * password field, same issued/redeemed fields), and returns it so the tutor can
+ * hand the link over when there is no email. Sudo: those fields deny all access.
+ */
+export async function issuePasswordResetToken(context: any, userId: string): Promise<string> {
+  const token = randomBytes(16).toString("base64url").slice(0, 20);
+  await context.sudo().db.User.updateOne({
+    where: { id: userId },
+    data: { passwordResetToken: token, passwordResetIssuedAt: new Date().toISOString(), passwordResetRedeemedAt: null },
+  });
+  return token;
 }
 
 /** Staff means a role that opens the dashboard and no linked Family; everyone else is a family. */

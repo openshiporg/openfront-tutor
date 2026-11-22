@@ -2,6 +2,7 @@ import type { PrismaClient, TutorProfile } from '@prisma/client'
 
 import type { Session } from '../access'
 import { trustedOrigin } from '../../shared/trusted-origin'
+import { issuePasswordResetToken, passwordResetUrl, RESET_TOKEN_MINUTES } from '../lib/mail'
 import { addDays, businessDateKey, businessDayRange, isDateKey } from './availability'
 import * as billing from './billing'
 import { book, cancelFutureSeriesSessions, cancelSession, completeInLock, excuseSession as excuse, markNoShow as noShow, releaseUnpaidHolds, reopenSession as reopen, rescheduleSession, topUpAllSeries, topUpSeries } from './booking'
@@ -372,22 +373,38 @@ export async function tutorFamily(prisma: PrismaClient, session: Session | undef
       payments: { orderBy: { createdAt: 'desc' }, take: 100, select: { id: true, kind: true, method: true, status: true, amountCents: true, refundedCents: true, reference: true, paidAt: true, reportedByGuardian: true } },
       series: { where: { status: { in: ['active', 'paused'] } }, select: { id: true, status: true, dayOfWeek: true, startMinute: true, startsOn: true, endsOn: true, skippedDates: true, sessionType: { select: { id: true, name: true } }, students: { select: { id: true, firstName: true } } } },
       inquiries: { select: { id: true, message: true, createdAt: true } },
+      user: { select: { email: true } },
     },
   })
-  const { inviteTokenHash, calendarTokenHash, ...rest } = f
+  const { inviteTokenHash, calendarTokenHash, user, ...rest } = f
   void calendarTokenHash
   const ledger = await Promise.all(f.purchases.map((x) => checkPurchase(db as never, x.id)))
-  return iso({ ...rest, hasAccount: Boolean(f.userId), inviteOpen: Boolean(inviteTokenHash), currencyCode: p.currencyCode, timezone: p.timezone, purchases: f.purchases.map((x, i) => ({ ...x, ledgerOk: ledger[i].ok })), invoices: f.invoices.map((i) => ({ ...i, overdue: isOverdue(i) })) })
+  return iso({ ...rest, hasAccount: Boolean(f.userId), accountEmail: user?.email ?? null, inviteOpen: Boolean(inviteTokenHash), currencyCode: p.currencyCode, timezone: p.timezone, purchases: f.purchases.map((x, i) => ({ ...x, ledgerOk: ledger[i].ok })), invoices: f.invoices.map((i) => ({ ...i, overdue: isOverdue(i) })) })
 }
 
-export async function inviteFamily(prisma: PrismaClient, session: Session | undefined, familyId: string, send?: boolean | null) {
+/**
+ * P16 / S8: the account link for a family. Without an account: a claim invite
+ * (a new one replaces the old). With an account: a one-time Keystone password
+ * link to /account/reset, so a family can get back in on a site without email.
+ * Emailed when mail is on; the link is always returned for the tutor to copy.
+ */
+export async function inviteFamily(prisma: PrismaClient, session: Session | undefined, familyId: string, send?: boolean | null, context?: { sudo(): any }) {
   const db = guarded(prisma)
   const p = await requireTutor(db, session, 'canManageFamilies')
+  const f = await db.family.findFirst({ where: { id: familyId, profileId: p.id }, select: { id: true, guardianName: true, user: { select: { id: true, email: true } } } })
+  if (!f) throw new CommandError('Choose a family.')
+  if (f.user) {
+    if (!context) throw new CommandError('A password link cannot be made here.')
+    const url = passwordResetUrl(await issuePasswordResetToken(context, f.user.id), 'family')
+    let mail: { status: string; error: string } | null = null
+    if (send !== false) mail = await notify(prisma, { profileId: p.id, kind: 'password_link', to: f.user.email, subject: `${p.businessName}: set a new password`, lines: [`Hi ${f.guardianName},`, `Use this link to set a new password for ${f.user.email}. It works once, within ${RESET_TOKEN_MINUTES} minutes.`], link: url, linkLabel: 'Set a new password', replyTo: p.email })
+    return { url, mail, kind: 'password', email: f.user.email, validMinutes: RESET_TOKEN_MINUTES }
+  }
   const r = await invite(db, p.id, familyId)
   const url = `${origin()}/account/claim?f=${encodeURIComponent(r.familyId)}&t=${encodeURIComponent(r.token)}`
   let mail: { status: string; error: string } | null = null
   if (send !== false) mail = await notify(prisma, { profileId: p.id, kind: 'invite', to: r.email, subject: `${p.businessName}: set up your family account`, lines: [`Hi ${r.guardianName},`, 'Set a password to see your sessions, notes, homework, packages and invoices in one place.'], link: url, linkLabel: 'Create your account', replyTo: p.email })
-  return { url, mail }
+  return { url, mail, kind: 'invite', email: r.email, validMinutes: null }
 }
 
 /** Students on the family page or the student page (P18): tutor fields include `needs`. */
