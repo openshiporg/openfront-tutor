@@ -30,4 +30,4 @@ Who clicked: **visitor** is a new browser with no session. **Priya** is a new fa
 
 ## Not done / open
 - S8 without SMTP: a family that already has an account cannot get back in if it forgets its password. `inviteFamily` refuses claimed families. Asked the backend builder for a tutor-issued reset link. (Reset path and Send invoice fixed in backend b34e59b.)
-- Retries during this check left extra records on the scratch database: Priya Shah has several expired unpaid holds and a few package-funded sessions; Maria has two "Waiting for payment" direct package requests.
+- Retries during this check left extra records on the scratch database: Priya Shah has several expired unpaid holds (the four duplicate package sessions were cancelled from her account, and her package is back to 240 min); Maria has two "Waiting for payment" direct package requests.
