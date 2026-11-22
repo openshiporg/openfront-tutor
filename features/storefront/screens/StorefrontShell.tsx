@@ -15,7 +15,7 @@ export async function StorefrontShell({ children, className = '' }: { children: 
     <div className={`flex min-h-dvh flex-col overflow-x-clip ${className}`}>
       <Header name={name} sub={sub} slug={t?.slug ?? null} viewer={viewer} />
       <div className="flex-1">{children}</div>
-      <Footer name={name} sub={sub} place={place} email={t?.email ?? null} phone={t?.phone ?? null} />
+      <Footer name={name} sub={sub} place={place} email={t?.email ?? null} phone={t?.phone ?? null} slug={t?.slug ?? null} />
     </div>
   )
 }
