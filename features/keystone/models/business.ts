@@ -4,7 +4,7 @@ import { checkbox, integer, relationship, select, text, timestamp } from '@keyst
 import { permissions } from '../access'
 import { ownerFilter } from '../utils/ownership'
 import { trackingFields } from './trackingFields'
-import { attachProfileHook, commandOnly, ownCrud, ownedMany, profileField, secret, sameProfileHooks } from './fields'
+import { attachProfileHook, ownCrud, ownedMany, profileField, sameProfileHooks, fieldKit } from './fields'
 
 const no = () => false
 const textarea = { ui: { displayMode: 'textarea' as const } }
@@ -17,7 +17,7 @@ export const TutorProfile = list({
   },
   ui: { labelField: 'businessName', listView: { initialColumns: ['businessName', 'slug', 'timezone', 'bookingOpen'] } },
   fields: {
-    owner: relationship({ ref: 'User.tutorProfile', ...commandOnly }),
+    owner: relationship({ ref: 'User.tutorProfile', ...fieldKit.commandOnly }),
     businessName: text({ validation: { isRequired: true } }),
     tutorName: text({ ui: { description: 'Your own name as families see it.' } }),
     slug: text({
@@ -52,9 +52,9 @@ export const TutorProfile = list({
     paymentInstructions: text({ ui: { displayMode: 'textarea', description: 'How families pay you directly: bank transfer, Zelle, JazzCash, M-Pesa…' } }),
     policiesText: text(textarea),
     invoiceDueDays: integer({ defaultValue: 7, validation: { isRequired: true, min: 0, max: 90 } }),
-    invoiceCounter: integer({ defaultValue: 0, validation: { isRequired: true, min: 0 }, ...commandOnly }),
+    invoiceCounter: integer({ defaultValue: 0, validation: { isRequired: true, min: 0 }, ...fieldKit.commandOnly }),
     reviewsEnabled: checkbox({ defaultValue: true }),
-    calendarTokenHash: text(secret),
+    calendarTokenHash: text(fieldKit.secret),
     subjects: ownedMany('Subject.profile'),
     sessionTypes: ownedMany('SessionType.profile'),
     weeklyHours: ownedMany('WeeklyHours.profile'),
@@ -113,11 +113,11 @@ export const SessionType = list({
     openToNewFamilies: checkbox({ defaultValue: false, ui: { description: 'New families may book this type from your page.' } }),
     maxStudents: integer({ defaultValue: 1, validation: { isRequired: true, min: 1, max: 4 }, ui: { description: 'Siblings from one family in one session (1 to 4).' } }),
     subjects: relationship({ ref: 'Subject.sessionTypes', many: true }),
-    packages: relationship({ ref: 'Package.appliesTo', many: true, ...commandOnly }),
+    packages: relationship({ ref: 'Package.appliesTo', many: true, ...fieldKit.commandOnly }),
     active: checkbox({ defaultValue: true }),
     sortOrder: integer({ defaultValue: 0 }),
-    sessions: relationship({ ref: 'Session.sessionType', many: true, ...commandOnly }),
-    series: relationship({ ref: 'RecurringSeries.sessionType', many: true, ...commandOnly }),
+    sessions: relationship({ ref: 'Session.sessionType', many: true, ...fieldKit.commandOnly }),
+    series: relationship({ ref: 'RecurringSeries.sessionType', many: true, ...fieldKit.commandOnly }),
     ...trackingFields,
   },
 })
@@ -170,7 +170,7 @@ export const Package = list({
     appliesTo: relationship({ ref: 'SessionType.packages', many: true, ui: { description: 'Leave empty to use on any session type.' } }),
     active: checkbox({ defaultValue: true }),
     sortOrder: integer({ defaultValue: 0 }),
-    purchases: relationship({ ref: 'PackagePurchase.package', many: true, ...commandOnly }),
+    purchases: relationship({ ref: 'PackagePurchase.package', many: true, ...fieldKit.commandOnly }),
     ...trackingFields,
   },
 })

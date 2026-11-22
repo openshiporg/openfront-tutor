@@ -14,7 +14,8 @@ export const User = list({
   access: {
     operation: {
       ...allOperations(isSignedIn),
-      create: () => true,
+      // Families get accounts through `claimFamilyAccount`; open sign-up is the starter's opt-in.
+      create: (args) => process.env.PUBLIC_SIGNUPS_ALLOWED === 'true' || permissions.canManagePeople(args),
       delete: permissions.canManagePeople,
     },
     filter: {
@@ -39,6 +40,8 @@ export const User = list({
       const session = context.session as Session | undefined
       if (operation !== 'create' || session?.data?.role?.canManagePeople) return resolvedData
       const sudo = context.sudo()
+      // The very first account is the tutor (`createInitialUser` checks there is none yet).
+      if ((await sudo.db.User.count({})) === 0) return resolvedData
       const found = (await sudo.db.Role.findMany({ where: { name: { equals: FAMILY_ROLE.name } }, take: 1 }))[0]
       const role = found ?? (await sudo.db.Role.createOne({ data: { ...FAMILY_ROLE } }))
       return { ...resolvedData, role: { connect: { id: role.id } } }

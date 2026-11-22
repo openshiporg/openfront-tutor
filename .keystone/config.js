@@ -117,7 +117,8 @@ var User = (0, import_core.list)({
   access: {
     operation: {
       ...(0, import_access.allOperations)(isSignedIn),
-      create: () => true,
+      // Families get accounts through `claimFamilyAccount`; open sign-up is the starter's opt-in.
+      create: (args) => process.env.PUBLIC_SIGNUPS_ALLOWED === "true" || permissions.canManagePeople(args),
       delete: permissions.canManagePeople
     },
     filter: {
@@ -142,6 +143,7 @@ var User = (0, import_core.list)({
       const session = context.session;
       if (operation !== "create" || session?.data?.role?.canManagePeople) return resolvedData;
       const sudo = context.sudo();
+      if (await sudo.db.User.count({}) === 0) return resolvedData;
       const found = (await sudo.db.Role.findMany({ where: { name: { equals: FAMILY_ROLE.name } }, take: 1 }))[0];
       const role = found ?? await sudo.db.Role.createOne({ data: { ...FAMILY_ROLE } });
       return { ...resolvedData, role: { connect: { id: role.id } } };
@@ -547,13 +549,20 @@ async function attachOwnProfile({ operation, resolvedData, context }) {
 // features/keystone/models/fields.ts
 var import_fields6 = require("@keystone-6/core/fields");
 var no = () => false;
-var commandOnly = {
-  access: { create: no, update: no },
-  ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "read" } }
-};
-var secret2 = {
-  access: { read: no, create: no, update: no },
-  ui: { itemView: { fieldMode: "hidden" }, createView: { fieldMode: "hidden" }, listView: { fieldMode: "hidden" } }
+var fieldKit = {
+  get commandOnly() {
+    return {
+      access: { create: no, update: no },
+      ui: { createView: { fieldMode: "hidden" }, itemView: { fieldMode: "read" } }
+    };
+  },
+  /** Never readable or writable through the generic API. */
+  get secret() {
+    return {
+      access: { read: no, create: no, update: no },
+      ui: { itemView: { fieldMode: "hidden" }, createView: { fieldMode: "hidden" }, listView: { fieldMode: "hidden" } }
+    };
+  }
 };
 function profileField(backRef) {
   return (0, import_fields6.relationship)({
@@ -606,7 +615,7 @@ var TutorProfile = (0, import_core7.list)({
   },
   ui: { labelField: "businessName", listView: { initialColumns: ["businessName", "slug", "timezone", "bookingOpen"] } },
   fields: {
-    owner: (0, import_fields7.relationship)({ ref: "User.tutorProfile", ...commandOnly }),
+    owner: (0, import_fields7.relationship)({ ref: "User.tutorProfile", ...fieldKit.commandOnly }),
     businessName: (0, import_fields7.text)({ validation: { isRequired: true } }),
     tutorName: (0, import_fields7.text)({ ui: { description: "Your own name as families see it." } }),
     slug: (0, import_fields7.text)({
@@ -641,9 +650,9 @@ var TutorProfile = (0, import_core7.list)({
     paymentInstructions: (0, import_fields7.text)({ ui: { displayMode: "textarea", description: "How families pay you directly: bank transfer, Zelle, JazzCash, M-Pesa\u2026" } }),
     policiesText: (0, import_fields7.text)(textarea),
     invoiceDueDays: (0, import_fields7.integer)({ defaultValue: 7, validation: { isRequired: true, min: 0, max: 90 } }),
-    invoiceCounter: (0, import_fields7.integer)({ defaultValue: 0, validation: { isRequired: true, min: 0 }, ...commandOnly }),
+    invoiceCounter: (0, import_fields7.integer)({ defaultValue: 0, validation: { isRequired: true, min: 0 }, ...fieldKit.commandOnly }),
     reviewsEnabled: (0, import_fields7.checkbox)({ defaultValue: true }),
-    calendarTokenHash: (0, import_fields7.text)(secret2),
+    calendarTokenHash: (0, import_fields7.text)(fieldKit.secret),
     subjects: ownedMany("Subject.profile"),
     sessionTypes: ownedMany("SessionType.profile"),
     weeklyHours: ownedMany("WeeklyHours.profile"),
@@ -700,11 +709,11 @@ var SessionType = (0, import_core7.list)({
     openToNewFamilies: (0, import_fields7.checkbox)({ defaultValue: false, ui: { description: "New families may book this type from your page." } }),
     maxStudents: (0, import_fields7.integer)({ defaultValue: 1, validation: { isRequired: true, min: 1, max: 4 }, ui: { description: "Siblings from one family in one session (1 to 4)." } }),
     subjects: (0, import_fields7.relationship)({ ref: "Subject.sessionTypes", many: true }),
-    packages: (0, import_fields7.relationship)({ ref: "Package.appliesTo", many: true, ...commandOnly }),
+    packages: (0, import_fields7.relationship)({ ref: "Package.appliesTo", many: true, ...fieldKit.commandOnly }),
     active: (0, import_fields7.checkbox)({ defaultValue: true }),
     sortOrder: (0, import_fields7.integer)({ defaultValue: 0 }),
-    sessions: (0, import_fields7.relationship)({ ref: "Session.sessionType", many: true, ...commandOnly }),
-    series: (0, import_fields7.relationship)({ ref: "RecurringSeries.sessionType", many: true, ...commandOnly }),
+    sessions: (0, import_fields7.relationship)({ ref: "Session.sessionType", many: true, ...fieldKit.commandOnly }),
+    series: (0, import_fields7.relationship)({ ref: "RecurringSeries.sessionType", many: true, ...fieldKit.commandOnly }),
     ...trackingFields
   }
 });
@@ -754,7 +763,7 @@ var Package = (0, import_core7.list)({
     appliesTo: (0, import_fields7.relationship)({ ref: "SessionType.packages", many: true, ui: { description: "Leave empty to use on any session type." } }),
     active: (0, import_fields7.checkbox)({ defaultValue: true }),
     sortOrder: (0, import_fields7.integer)({ defaultValue: 0 }),
-    purchases: (0, import_fields7.relationship)({ ref: "PackagePurchase.package", many: true, ...commandOnly }),
+    purchases: (0, import_fields7.relationship)({ ref: "PackagePurchase.package", many: true, ...fieldKit.commandOnly }),
     ...trackingFields
   }
 });
@@ -782,17 +791,17 @@ var Family = (0, import_core8.list)({
     timezone: (0, import_fields9.text)(),
     howTheyFoundMe: (0, import_fields9.text)(),
     privateNotes: (0, import_fields9.text)({ ui: { displayMode: "textarea", description: "Only you see this." } }),
-    user: (0, import_fields9.relationship)({ ref: "User.family", ...commandOnly }),
-    inviteTokenHash: (0, import_fields9.text)(secret2),
-    calendarTokenHash: (0, import_fields9.text)(secret2),
-    students: (0, import_fields9.relationship)({ ref: "Student.family", many: true, ...commandOnly }),
-    sessions: (0, import_fields9.relationship)({ ref: "Session.family", many: true, ...commandOnly }),
-    series: (0, import_fields9.relationship)({ ref: "RecurringSeries.family", many: true, ...commandOnly }),
-    purchases: (0, import_fields9.relationship)({ ref: "PackagePurchase.family", many: true, ...commandOnly }),
-    invoices: (0, import_fields9.relationship)({ ref: "Invoice.family", many: true, ...commandOnly }),
-    payments: (0, import_fields9.relationship)({ ref: "Payment.family", many: true, ...commandOnly }),
-    reviews: (0, import_fields9.relationship)({ ref: "Review.family", many: true, ...commandOnly }),
-    inquiries: (0, import_fields9.relationship)({ ref: "Inquiry.family", many: true, ...commandOnly }),
+    user: (0, import_fields9.relationship)({ ref: "User.family", ...fieldKit.commandOnly }),
+    inviteTokenHash: (0, import_fields9.text)(fieldKit.secret),
+    calendarTokenHash: (0, import_fields9.text)(fieldKit.secret),
+    students: (0, import_fields9.relationship)({ ref: "Student.family", many: true, ...fieldKit.commandOnly }),
+    sessions: (0, import_fields9.relationship)({ ref: "Session.family", many: true, ...fieldKit.commandOnly }),
+    series: (0, import_fields9.relationship)({ ref: "RecurringSeries.family", many: true, ...fieldKit.commandOnly }),
+    purchases: (0, import_fields9.relationship)({ ref: "PackagePurchase.family", many: true, ...fieldKit.commandOnly }),
+    invoices: (0, import_fields9.relationship)({ ref: "Invoice.family", many: true, ...fieldKit.commandOnly }),
+    payments: (0, import_fields9.relationship)({ ref: "Payment.family", many: true, ...fieldKit.commandOnly }),
+    reviews: (0, import_fields9.relationship)({ ref: "Review.family", many: true, ...fieldKit.commandOnly }),
+    inquiries: (0, import_fields9.relationship)({ ref: "Inquiry.family", many: true, ...fieldKit.commandOnly }),
     ...trackingFields
   }
 });
@@ -813,11 +822,11 @@ var Student = (0, import_core8.list)({
     meetingUrl: (0, import_fields9.text)({ ui: { description: "Overrides your default lesson link for this student." } }),
     status: (0, import_fields9.select)({ type: "enum", options: opt("active", "paused", "finished"), defaultValue: "active", validation: { isRequired: true } }),
     subjects: (0, import_fields9.relationship)({ ref: "Subject.students", many: true }),
-    sessions: (0, import_fields9.relationship)({ ref: "Session.students", many: true, ...commandOnly }),
-    series: (0, import_fields9.relationship)({ ref: "RecurringSeries.students", many: true, ...commandOnly }),
-    homework: (0, import_fields9.relationship)({ ref: "Homework.student", many: true, ...commandOnly }),
-    marks: (0, import_fields9.relationship)({ ref: "ProgressMark.student", many: true, ...commandOnly }),
-    resources: (0, import_fields9.relationship)({ ref: "Resource.students", many: true, ...commandOnly }),
+    sessions: (0, import_fields9.relationship)({ ref: "Session.students", many: true, ...fieldKit.commandOnly }),
+    series: (0, import_fields9.relationship)({ ref: "RecurringSeries.students", many: true, ...fieldKit.commandOnly }),
+    homework: (0, import_fields9.relationship)({ ref: "Homework.student", many: true, ...fieldKit.commandOnly }),
+    marks: (0, import_fields9.relationship)({ ref: "ProgressMark.student", many: true, ...fieldKit.commandOnly }),
+    resources: (0, import_fields9.relationship)({ ref: "Resource.students", many: true, ...fieldKit.commandOnly }),
     ...trackingFields
   }
 });
@@ -836,8 +845,8 @@ var Inquiry = (0, import_core8.list)({
     studentLevel: (0, import_fields9.text)(),
     subject: (0, import_fields9.text)(),
     message: (0, import_fields9.text)(textarea2),
-    status: (0, import_fields9.select)({ type: "enum", options: opt("new", "contacted", "converted", "closed"), defaultValue: "new", validation: { isRequired: true }, ...commandOnly }),
-    family: (0, import_fields9.relationship)({ ref: "Family.inquiries", ...commandOnly }),
+    status: (0, import_fields9.select)({ type: "enum", options: opt("new", "contacted", "converted", "closed"), defaultValue: "new", validation: { isRequired: true }, ...fieldKit.commandOnly }),
+    family: (0, import_fields9.relationship)({ ref: "Family.inquiries", ...fieldKit.commandOnly }),
     ...trackingFields
   }
 });
@@ -851,7 +860,7 @@ var Review = (0, import_core8.list)({
   fields: {
     profile: profileField("reviews"),
     // One per family, enforced by `submitReview` under the family lock.
-    family: (0, import_fields9.relationship)({ ref: "Family.reviews", ...commandOnly }),
+    family: (0, import_fields9.relationship)({ ref: "Family.reviews", ...fieldKit.commandOnly }),
     displayName: (0, import_fields9.text)({ validation: { isRequired: true } }),
     rating: (0, import_fields9.integer)({ validation: { isRequired: true, min: 1, max: 5 } }),
     body: (0, import_fields9.text)(textarea2),
@@ -863,10 +872,11 @@ var Review = (0, import_core8.list)({
 // features/keystone/models/teaching.ts
 var import_core9 = require("@keystone-6/core");
 var import_fields11 = require("@keystone-6/core/fields");
+var co = (ui = {}, extra = {}) => ({ ...extra, access: fieldKit.commandOnly.access, ui: { ...fieldKit.commandOnly.ui, ...ui } });
 var no3 = () => false;
 var textarea3 = { ui: { displayMode: "textarea" } };
 var opt2 = (...values) => values.map((value) => ({ label: value.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), value }));
-var readonlyEnum = (values, defaultValue) => (0, import_fields11.select)({ type: "enum", options: opt2(...values), defaultValue, validation: { isRequired: true }, ...commandOnly });
+var readonlyEnum = (values, defaultValue) => (0, import_fields11.select)({ type: "enum", options: opt2(...values), defaultValue, validation: { isRequired: true }, ...fieldKit.commandOnly });
 var SESSION_STATUSES = ["pending_payment", "scheduled", "completed", "cancelled", "late_cancelled", "no_show", "excused", "released"];
 var FUNDINGS = ["package", "card", "invoice", "flat", "free"];
 var Session = (0, import_core9.list)({
@@ -877,40 +887,40 @@ var Session = (0, import_core9.list)({
   ui: { labelField: "typeNameSnapshot", listView: { initialColumns: ["startsAt", "family", "typeNameSnapshot", "status", "funding", "paymentStatus"] } },
   fields: {
     profile: profileField("sessions"),
-    family: (0, import_fields11.relationship)({ ref: "Family.sessions", ...commandOnly }),
-    students: (0, import_fields11.relationship)({ ref: "Student.sessions", many: true, ...commandOnly }),
-    sessionType: (0, import_fields11.relationship)({ ref: "SessionType.sessions", ...commandOnly }),
-    series: (0, import_fields11.relationship)({ ref: "RecurringSeries.sessions", ...commandOnly }),
-    startsAt: (0, import_fields11.timestamp)({ validation: { isRequired: true }, ...commandOnly }),
-    endsAt: (0, import_fields11.timestamp)({ validation: { isRequired: true }, ...commandOnly }),
+    family: (0, import_fields11.relationship)({ ref: "Family.sessions", ...fieldKit.commandOnly }),
+    students: (0, import_fields11.relationship)({ ref: "Student.sessions", many: true, ...fieldKit.commandOnly }),
+    sessionType: (0, import_fields11.relationship)({ ref: "SessionType.sessions", ...fieldKit.commandOnly }),
+    series: (0, import_fields11.relationship)({ ref: "RecurringSeries.sessions", ...fieldKit.commandOnly }),
+    startsAt: (0, import_fields11.timestamp)({ validation: { isRequired: true }, ...fieldKit.commandOnly }),
+    endsAt: (0, import_fields11.timestamp)({ validation: { isRequired: true }, ...fieldKit.commandOnly }),
     mode: (0, import_fields11.select)({ type: "enum", options: opt2("online", "in_person"), defaultValue: "online", validation: { isRequired: true } }),
     meetingUrl: (0, import_fields11.text)({ ui: { description: "Overrides the student and default lesson link for this session." } }),
     locationText: (0, import_fields11.text)(),
     status: readonlyEnum([...SESSION_STATUSES], "scheduled"),
     funding: readonlyEnum([...FUNDINGS], "free"),
     source: readonlyEnum(["online", "tutor", "series"], "tutor"),
-    typeNameSnapshot: (0, import_fields11.text)(commandOnly),
-    priceCents: (0, import_fields11.integer)({ defaultValue: 0, validation: { isRequired: true, min: 0 }, ...commandOnly }),
-    chargedCents: (0, import_fields11.integer)({ defaultValue: 0, validation: { isRequired: true, min: 0 }, ...commandOnly }),
-    chargedMinutes: (0, import_fields11.integer)({ defaultValue: 0, validation: { isRequired: true, min: 0 }, ...commandOnly }),
-    billable: (0, import_fields11.select)({ type: "enum", options: opt2("no", "yes"), defaultValue: "no", validation: { isRequired: true }, ...commandOnly }),
+    typeNameSnapshot: (0, import_fields11.text)(fieldKit.commandOnly),
+    priceCents: (0, import_fields11.integer)({ defaultValue: 0, validation: { isRequired: true, min: 0 }, ...fieldKit.commandOnly }),
+    chargedCents: (0, import_fields11.integer)({ defaultValue: 0, validation: { isRequired: true, min: 0 }, ...fieldKit.commandOnly }),
+    chargedMinutes: (0, import_fields11.integer)({ defaultValue: 0, validation: { isRequired: true, min: 0 }, ...fieldKit.commandOnly }),
+    billable: (0, import_fields11.select)({ type: "enum", options: opt2("no", "yes"), defaultValue: "no", validation: { isRequired: true }, ...fieldKit.commandOnly }),
     paymentStatus: readonlyEnum(["not_due", "unpaid", "paid", "refunded", "part_refunded"], "not_due"),
-    holdEndsAt: (0, import_fields11.timestamp)(commandOnly),
-    guardianMessage: (0, import_fields11.text)({ ui: { displayMode: "textarea" }, ...commandOnly }),
-    cancellationReason: (0, import_fields11.text)(commandOnly),
+    holdEndsAt: (0, import_fields11.timestamp)(fieldKit.commandOnly),
+    guardianMessage: (0, import_fields11.text)(co({ displayMode: "textarea" })),
+    cancellationReason: (0, import_fields11.text)(fieldKit.commandOnly),
     cancelledBy: readonlyEnum(["none", "guardian", "tutor", "system"], "none"),
-    cancelledAt: (0, import_fields11.timestamp)(commandOnly),
-    completedAt: (0, import_fields11.timestamp)(commandOnly),
-    rescheduleCount: (0, import_fields11.integer)({ defaultValue: 0, validation: { isRequired: true, min: 0 }, ...commandOnly }),
-    rescheduledFrom: (0, import_fields11.timestamp)(commandOnly),
-    reminderSentAt: (0, import_fields11.timestamp)(commandOnly),
-    publicAccessTokenHash: (0, import_fields11.text)(secret2),
-    note: (0, import_fields11.relationship)({ ref: "SessionNote.session", ...commandOnly }),
-    homework: (0, import_fields11.relationship)({ ref: "Homework.session", many: true, ...commandOnly }),
-    creditEntries: (0, import_fields11.relationship)({ ref: "CreditEntry.session", many: true, ...commandOnly }),
-    payments: (0, import_fields11.relationship)({ ref: "Payment.session", many: true, ...commandOnly }),
-    paymentSessions: (0, import_fields11.relationship)({ ref: "PaymentSession.session", many: true, ...commandOnly }),
-    invoiceLines: (0, import_fields11.relationship)({ ref: "InvoiceLine.session", many: true, ...commandOnly }),
+    cancelledAt: (0, import_fields11.timestamp)(fieldKit.commandOnly),
+    completedAt: (0, import_fields11.timestamp)(fieldKit.commandOnly),
+    rescheduleCount: (0, import_fields11.integer)({ defaultValue: 0, validation: { isRequired: true, min: 0 }, ...fieldKit.commandOnly }),
+    rescheduledFrom: (0, import_fields11.timestamp)(fieldKit.commandOnly),
+    reminderSentAt: (0, import_fields11.timestamp)(fieldKit.commandOnly),
+    publicAccessTokenHash: (0, import_fields11.text)(fieldKit.secret),
+    note: (0, import_fields11.relationship)({ ref: "SessionNote.session", ...fieldKit.commandOnly }),
+    homework: (0, import_fields11.relationship)({ ref: "Homework.session", many: true, ...fieldKit.commandOnly }),
+    creditEntries: (0, import_fields11.relationship)({ ref: "CreditEntry.session", many: true, ...fieldKit.commandOnly }),
+    payments: (0, import_fields11.relationship)({ ref: "Payment.session", many: true, ...fieldKit.commandOnly }),
+    paymentSessions: (0, import_fields11.relationship)({ ref: "PaymentSession.session", many: true, ...fieldKit.commandOnly }),
+    invoiceLines: (0, import_fields11.relationship)({ ref: "InvoiceLine.session", many: true, ...fieldKit.commandOnly }),
     ...trackingFields
   }
 });
@@ -922,13 +932,13 @@ var SessionNote = (0, import_core9.list)({
   ui: { listView: { initialColumns: ["session", "covered", "workOnNext", "sharedAt"] } },
   fields: {
     profile: profileField("sessionNotes"),
-    session: (0, import_fields11.relationship)({ ref: "Session.note", db: { foreignKey: true }, ...commandOnly }),
+    session: (0, import_fields11.relationship)({ ref: "Session.note", db: { foreignKey: true }, ...fieldKit.commandOnly }),
     covered: (0, import_fields11.text)(textarea3),
     wentWell: (0, import_fields11.text)(textarea3),
     workOnNext: (0, import_fields11.text)(textarea3),
     effort: (0, import_fields11.integer)({ validation: { min: 1, max: 5 } }),
     privateNote: (0, import_fields11.text)({ ui: { displayMode: "textarea", description: "Only you see this." } }),
-    sharedAt: (0, import_fields11.timestamp)(commandOnly),
+    sharedAt: (0, import_fields11.timestamp)(fieldKit.commandOnly),
     ...trackingFields
   }
 });
@@ -940,18 +950,18 @@ var Homework = (0, import_core9.list)({
   fields: {
     profile: profileField("homework"),
     student: (0, import_fields11.relationship)({ ref: "Student.homework" }),
-    session: (0, import_fields11.relationship)({ ref: "Session.homework", ...commandOnly }),
+    session: (0, import_fields11.relationship)({ ref: "Session.homework", ...fieldKit.commandOnly }),
     title: (0, import_fields11.text)({ validation: { isRequired: true } }),
     instructions: (0, import_fields11.text)(textarea3),
     dueAt: (0, import_fields11.timestamp)(),
     linkUrl: (0, import_fields11.text)(),
     file: (0, import_fields11.file)({ storage: "tutor_files" }),
     status: readonlyEnum(["assigned", "handed_in", "reviewed"], "assigned"),
-    handedInAt: (0, import_fields11.timestamp)(commandOnly),
-    guardianComment: (0, import_fields11.text)({ ui: { displayMode: "textarea" }, ...commandOnly }),
-    handInUrl: (0, import_fields11.text)(commandOnly),
-    feedback: (0, import_fields11.text)({ ui: { displayMode: "textarea" }, ...commandOnly }),
-    reviewedAt: (0, import_fields11.timestamp)(commandOnly),
+    handedInAt: (0, import_fields11.timestamp)(fieldKit.commandOnly),
+    guardianComment: (0, import_fields11.text)(co({ displayMode: "textarea" })),
+    handInUrl: (0, import_fields11.text)(fieldKit.commandOnly),
+    feedback: (0, import_fields11.text)(co({ displayMode: "textarea" })),
+    reviewedAt: (0, import_fields11.timestamp)(fieldKit.commandOnly),
     ...trackingFields
   }
 });
@@ -993,18 +1003,18 @@ var RecurringSeries = (0, import_core9.list)({
   ui: { listView: { initialColumns: ["family", "sessionType", "dayOfWeek", "startMinute", "status"] } },
   fields: {
     profile: profileField("series"),
-    family: (0, import_fields11.relationship)({ ref: "Family.series", ...commandOnly }),
-    students: (0, import_fields11.relationship)({ ref: "Student.series", many: true, ...commandOnly }),
-    sessionType: (0, import_fields11.relationship)({ ref: "SessionType.series", ...commandOnly }),
-    dayOfWeek: (0, import_fields11.integer)({ validation: { isRequired: true, min: 0, max: 6 }, ...commandOnly, ui: { description: "0 = Sunday \u2026 6 = Saturday, in your timezone." } }),
-    startMinute: (0, import_fields11.integer)({ validation: { isRequired: true, min: 0, max: 1439 }, ...commandOnly }),
-    mode: (0, import_fields11.select)({ type: "enum", options: opt2("online", "in_person"), defaultValue: "online", validation: { isRequired: true }, ...commandOnly }),
-    startsOn: (0, import_fields11.text)({ validation: { isRequired: true }, ...commandOnly, ui: { description: "YYYY-MM-DD" } }),
-    endsOn: (0, import_fields11.text)(commandOnly),
+    family: (0, import_fields11.relationship)({ ref: "Family.series", ...fieldKit.commandOnly }),
+    students: (0, import_fields11.relationship)({ ref: "Student.series", many: true, ...fieldKit.commandOnly }),
+    sessionType: (0, import_fields11.relationship)({ ref: "SessionType.series", ...fieldKit.commandOnly }),
+    dayOfWeek: (0, import_fields11.integer)(co({ description: "0 = Sunday \u2026 6 = Saturday, in your timezone." }, { validation: { isRequired: true, min: 0, max: 6 } })),
+    startMinute: (0, import_fields11.integer)({ validation: { isRequired: true, min: 0, max: 1439 }, ...fieldKit.commandOnly }),
+    mode: (0, import_fields11.select)({ type: "enum", options: opt2("online", "in_person"), defaultValue: "online", validation: { isRequired: true }, ...fieldKit.commandOnly }),
+    startsOn: (0, import_fields11.text)(co({ description: "YYYY-MM-DD" }, { validation: { isRequired: true } })),
+    endsOn: (0, import_fields11.text)(fieldKit.commandOnly),
     status: readonlyEnum(["active", "paused", "ended"], "active"),
-    generatedThrough: (0, import_fields11.text)(commandOnly),
-    skippedDates: (0, import_fields11.text)({ ui: { displayMode: "textarea", description: "Weeks that could not be booked (one YYYY-MM-DD per line)." }, ...commandOnly }),
-    sessions: (0, import_fields11.relationship)({ ref: "Session.series", many: true, ...commandOnly }),
+    generatedThrough: (0, import_fields11.text)(fieldKit.commandOnly),
+    skippedDates: (0, import_fields11.text)(co({ displayMode: "textarea", description: "Weeks that could not be booked (one YYYY-MM-DD per line)." })),
+    sessions: (0, import_fields11.relationship)({ ref: "Session.series", many: true, ...fieldKit.commandOnly }),
     ...trackingFields
   }
 });
@@ -1012,29 +1022,30 @@ var RecurringSeries = (0, import_core9.list)({
 // features/keystone/models/money.ts
 var import_core10 = require("@keystone-6/core");
 var import_fields13 = require("@keystone-6/core/fields");
+var co2 = (ui = {}, extra = {}) => ({ ...extra, access: fieldKit.commandOnly.access, ui: { ...fieldKit.commandOnly.ui, ...ui } });
 var no4 = () => false;
 var opt3 = (...values) => values.map((value) => ({ label: value.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()), value }));
-var readonlyEnum2 = (values, defaultValue) => (0, import_fields13.select)({ type: "enum", options: opt3(...values), defaultValue, validation: { isRequired: true }, ...commandOnly });
-var ro = (extra = {}) => ({ ...commandOnly, ...extra });
+var readonlyEnum2 = (values, defaultValue) => (0, import_fields13.select)({ type: "enum", options: opt3(...values), defaultValue, validation: { isRequired: true }, ...fieldKit.commandOnly });
+var ro = (extra = {}) => ({ ...fieldKit.commandOnly, ...extra });
 var PackagePurchase = (0, import_core10.list)({
   access: ownReadOnly(permissions.canManageFamilies),
   ui: { labelField: "nameSnapshot", listView: { initialColumns: ["family", "nameSnapshot", "minutesRemaining", "status", "expiresAt"] } },
   fields: {
     profile: profileField("purchases"),
-    family: (0, import_fields13.relationship)({ ref: "Family.purchases", ...commandOnly }),
-    package: (0, import_fields13.relationship)({ ref: "Package.purchases", ...commandOnly }),
-    nameSnapshot: (0, import_fields13.text)(commandOnly),
-    appliesToIds: (0, import_fields13.text)({ ...commandOnly, ui: { ...commandOnly.ui, description: "Session type ids this package covers, copied when bought (empty = any)." } }),
+    family: (0, import_fields13.relationship)({ ref: "Family.purchases", ...fieldKit.commandOnly }),
+    package: (0, import_fields13.relationship)({ ref: "Package.purchases", ...fieldKit.commandOnly }),
+    nameSnapshot: (0, import_fields13.text)(fieldKit.commandOnly),
+    appliesToIds: (0, import_fields13.text)(co2({ description: "Session type ids this package covers, copied when bought (empty = any)." })),
     minutesGranted: (0, import_fields13.integer)(ro({ defaultValue: 0, validation: { isRequired: true, min: 0 } })),
     minutesRemaining: (0, import_fields13.integer)(ro({ defaultValue: 0, validation: { isRequired: true, min: 0 } })),
     pricePaidCents: (0, import_fields13.integer)(ro({ defaultValue: 0, validation: { isRequired: true, min: 0 } })),
     refundedCents: (0, import_fields13.integer)(ro({ defaultValue: 0, validation: { isRequired: true, min: 0 } })),
     status: readonlyEnum2(["awaiting_payment", "active", "used_up", "expired", "refunded", "cancelled"], "awaiting_payment"),
-    purchasedAt: (0, import_fields13.timestamp)(commandOnly),
-    expiresAt: (0, import_fields13.timestamp)(commandOnly),
-    entries: (0, import_fields13.relationship)({ ref: "CreditEntry.purchase", many: true, ...commandOnly }),
-    payments: (0, import_fields13.relationship)({ ref: "Payment.purchase", many: true, ...commandOnly }),
-    paymentSessions: (0, import_fields13.relationship)({ ref: "PaymentSession.purchase", many: true, ...commandOnly }),
+    purchasedAt: (0, import_fields13.timestamp)(fieldKit.commandOnly),
+    expiresAt: (0, import_fields13.timestamp)(fieldKit.commandOnly),
+    entries: (0, import_fields13.relationship)({ ref: "CreditEntry.purchase", many: true, ...fieldKit.commandOnly }),
+    payments: (0, import_fields13.relationship)({ ref: "Payment.purchase", many: true, ...fieldKit.commandOnly }),
+    paymentSessions: (0, import_fields13.relationship)({ ref: "PaymentSession.purchase", many: true, ...fieldKit.commandOnly }),
     ...trackingFields
   }
 });
@@ -1043,12 +1054,13 @@ var CreditEntry = (0, import_core10.list)({
   ui: { hideCreate: true, hideDelete: true, listView: { initialColumns: ["purchase", "kind", "minutes", "session", "createdAt"] } },
   fields: {
     profile: profileField("creditEntries"),
-    purchase: (0, import_fields13.relationship)({ ref: "PackagePurchase.entries", ...commandOnly }),
-    session: (0, import_fields13.relationship)({ ref: "Session.creditEntries", ...commandOnly }),
+    purchase: (0, import_fields13.relationship)({ ref: "PackagePurchase.entries", ...fieldKit.commandOnly }),
+    session: (0, import_fields13.relationship)({ ref: "Session.creditEntries", ...fieldKit.commandOnly }),
     kind: readonlyEnum2(["grant", "hold", "release", "debit", "reversal", "expire", "refund", "adjustment"], "grant"),
     minutes: (0, import_fields13.integer)(ro({ validation: { isRequired: true } })),
-    note: (0, import_fields13.text)(commandOnly),
-    key: (0, import_fields13.text)({ ...secret2, isIndexed: "unique" }),
+    heldChange: (0, import_fields13.integer)(co2({ description: "Change in the minutes held for this entry's session: + when a hold opens, \u2212 when a release or debit closes it." }, { defaultValue: 0, validation: { isRequired: true } })),
+    note: (0, import_fields13.text)(fieldKit.commandOnly),
+    key: (0, import_fields13.text)({ ...fieldKit.secret, isIndexed: "unique" }),
     ...trackingFields
   }
 });
@@ -1058,21 +1070,21 @@ var Invoice = (0, import_core10.list)({
   ui: { labelField: "number", listView: { initialColumns: ["number", "family", "status", "totalCents", "paidCents", "dueAt"] } },
   fields: {
     profile: profileField("invoices"),
-    family: (0, import_fields13.relationship)({ ref: "Family.invoices", ...commandOnly }),
+    family: (0, import_fields13.relationship)({ ref: "Family.invoices", ...fieldKit.commandOnly }),
     number: (0, import_fields13.text)(ro({ validation: { isRequired: true } })),
     status: readonlyEnum2(["draft", "sent", "paid", "void"], "draft"),
-    issuedAt: (0, import_fields13.timestamp)(commandOnly),
-    dueAt: (0, import_fields13.timestamp)(commandOnly),
-    periodMonth: (0, import_fields13.text)(ro({ ui: { ...commandOnly.ui, description: "YYYY-MM of a flat monthly fee on this invoice." } })),
+    issuedAt: (0, import_fields13.timestamp)(fieldKit.commandOnly),
+    dueAt: (0, import_fields13.timestamp)(fieldKit.commandOnly),
+    periodMonth: (0, import_fields13.text)(co2({ description: "YYYY-MM of a flat monthly fee on this invoice." })),
     subtotalCents: (0, import_fields13.integer)(ro({ defaultValue: 0, validation: { isRequired: true, min: 0 } })),
     totalCents: (0, import_fields13.integer)(ro({ defaultValue: 0, validation: { isRequired: true, min: 0 } })),
     paidCents: (0, import_fields13.integer)(ro({ defaultValue: 0, validation: { isRequired: true, min: 0 } })),
-    note: (0, import_fields13.text)(commandOnly),
-    voidedAt: (0, import_fields13.timestamp)(commandOnly),
-    lines: (0, import_fields13.relationship)({ ref: "InvoiceLine.invoice", many: true, ...commandOnly }),
-    payments: (0, import_fields13.relationship)({ ref: "Payment.invoice", many: true, ...commandOnly }),
-    paymentSessions: (0, import_fields13.relationship)({ ref: "PaymentSession.invoice", many: true, ...commandOnly }),
-    publicAccessTokenHash: (0, import_fields13.text)(secret2),
+    note: (0, import_fields13.text)(fieldKit.commandOnly),
+    voidedAt: (0, import_fields13.timestamp)(fieldKit.commandOnly),
+    lines: (0, import_fields13.relationship)({ ref: "InvoiceLine.invoice", many: true, ...fieldKit.commandOnly }),
+    payments: (0, import_fields13.relationship)({ ref: "Payment.invoice", many: true, ...fieldKit.commandOnly }),
+    paymentSessions: (0, import_fields13.relationship)({ ref: "PaymentSession.invoice", many: true, ...fieldKit.commandOnly }),
+    publicAccessTokenHash: (0, import_fields13.text)(fieldKit.secret),
     ...trackingFields
   }
 });
@@ -1081,8 +1093,8 @@ var InvoiceLine = (0, import_core10.list)({
   ui: { listView: { initialColumns: ["invoice", "description", "quantity", "unitCents", "totalCents"] } },
   fields: {
     profile: profileField("invoiceLines"),
-    invoice: (0, import_fields13.relationship)({ ref: "Invoice.lines", ...commandOnly }),
-    session: (0, import_fields13.relationship)({ ref: "Session.invoiceLines", ...commandOnly }),
+    invoice: (0, import_fields13.relationship)({ ref: "Invoice.lines", ...fieldKit.commandOnly }),
+    session: (0, import_fields13.relationship)({ ref: "Session.invoiceLines", ...fieldKit.commandOnly }),
     description: (0, import_fields13.text)(ro({ validation: { isRequired: true } })),
     quantity: (0, import_fields13.integer)(ro({ defaultValue: 1, validation: { isRequired: true, min: 1 } })),
     unitCents: (0, import_fields13.integer)(ro({ defaultValue: 0, validation: { isRequired: true, min: 0 } })),
@@ -1096,12 +1108,12 @@ var Payment = (0, import_core10.list)({
   ui: { listView: { initialColumns: ["family", "kind", "method", "status", "amountCents", "paidAt"] } },
   fields: {
     profile: profileField("payments"),
-    family: (0, import_fields13.relationship)({ ref: "Family.payments", ...commandOnly }),
-    session: (0, import_fields13.relationship)({ ref: "Session.payments", ...commandOnly }),
-    purchase: (0, import_fields13.relationship)({ ref: "PackagePurchase.payments", ...commandOnly }),
-    invoice: (0, import_fields13.relationship)({ ref: "Invoice.payments", ...commandOnly }),
-    refundOf: (0, import_fields13.relationship)({ ref: "Payment.refunds", ...commandOnly }),
-    refunds: (0, import_fields13.relationship)({ ref: "Payment.refundOf", many: true, ...commandOnly }),
+    family: (0, import_fields13.relationship)({ ref: "Family.payments", ...fieldKit.commandOnly }),
+    session: (0, import_fields13.relationship)({ ref: "Session.payments", ...fieldKit.commandOnly }),
+    purchase: (0, import_fields13.relationship)({ ref: "PackagePurchase.payments", ...fieldKit.commandOnly }),
+    invoice: (0, import_fields13.relationship)({ ref: "Invoice.payments", ...fieldKit.commandOnly }),
+    refundOf: (0, import_fields13.relationship)({ ref: "Payment.refunds", ...fieldKit.commandOnly }),
+    refunds: (0, import_fields13.relationship)({ ref: "Payment.refundOf", many: true, ...fieldKit.commandOnly }),
     kind: readonlyEnum2(["session", "package", "invoice", "refund"], "session"),
     method: readonlyEnum2(["stripe", "cash", "bank_transfer", "mobile_money", "other"], "cash"),
     status: readonlyEnum2(["reported", "confirmed", "rejected", "refunded", "partially_refunded"], "confirmed"),
@@ -1110,12 +1122,12 @@ var Payment = (0, import_core10.list)({
     refundCount: (0, import_fields13.integer)(ro({ defaultValue: 0, validation: { isRequired: true, min: 0 } })),
     refundPendingCents: (0, import_fields13.integer)(ro({ defaultValue: 0, validation: { isRequired: true, min: 0 } })),
     currencyCode: (0, import_fields13.text)(ro({ defaultValue: "USD" })),
-    reference: (0, import_fields13.text)(commandOnly),
-    providerReference: (0, import_fields13.text)(commandOnly),
-    paidAt: (0, import_fields13.timestamp)(commandOnly),
-    reportedByGuardian: (0, import_fields13.checkbox)({ defaultValue: false, ...commandOnly }),
-    decidedAt: (0, import_fields13.timestamp)(commandOnly),
-    note: (0, import_fields13.text)(commandOnly),
+    reference: (0, import_fields13.text)(fieldKit.commandOnly),
+    providerReference: (0, import_fields13.text)(fieldKit.commandOnly),
+    paidAt: (0, import_fields13.timestamp)(fieldKit.commandOnly),
+    reportedByGuardian: (0, import_fields13.checkbox)({ defaultValue: false, ...fieldKit.commandOnly }),
+    decidedAt: (0, import_fields13.timestamp)(fieldKit.commandOnly),
+    note: (0, import_fields13.text)(fieldKit.commandOnly),
     ...trackingFields
   }
 });
@@ -1135,7 +1147,7 @@ var PaymentProvider = (0, import_core10.list)({
     getPaymentStatusFunction: (0, import_fields13.text)(adapter),
     generatePaymentLinkFunction: (0, import_fields13.text)(adapter),
     handleWebhookFunction: (0, import_fields13.text)(adapter),
-    paymentSessions: (0, import_fields13.relationship)({ ref: "PaymentSession.paymentProvider", many: true, ...commandOnly }),
+    paymentSessions: (0, import_fields13.relationship)({ ref: "PaymentSession.paymentProvider", many: true, ...fieldKit.commandOnly }),
     ...trackingFields
   }
 });
@@ -1145,16 +1157,16 @@ var PaymentSession = (0, import_core10.list)({
   fields: {
     profile: profileField("paymentSessions"),
     target: readonlyEnum2(["session", "package", "invoice"], "session"),
-    session: (0, import_fields13.relationship)({ ref: "Session.paymentSessions", ...commandOnly }),
-    purchase: (0, import_fields13.relationship)({ ref: "PackagePurchase.paymentSessions", ...commandOnly }),
-    invoice: (0, import_fields13.relationship)({ ref: "Invoice.paymentSessions", ...commandOnly }),
-    paymentProvider: (0, import_fields13.relationship)({ ref: "PaymentProvider.paymentSessions", ...commandOnly }),
+    session: (0, import_fields13.relationship)({ ref: "Session.paymentSessions", ...fieldKit.commandOnly }),
+    purchase: (0, import_fields13.relationship)({ ref: "PackagePurchase.paymentSessions", ...fieldKit.commandOnly }),
+    invoice: (0, import_fields13.relationship)({ ref: "Invoice.paymentSessions", ...fieldKit.commandOnly }),
+    paymentProvider: (0, import_fields13.relationship)({ ref: "PaymentProvider.paymentSessions", ...fieldKit.commandOnly }),
     status: readonlyEnum2(["pending", "captured", "expired", "cancelled", "refunded"], "pending"),
     amountCents: (0, import_fields13.integer)(ro({ validation: { isRequired: true, min: 0 } })),
     currencyCode: (0, import_fields13.text)(ro({ defaultValue: "USD" })),
-    providerPaymentId: (0, import_fields13.text)({ ...commandOnly, isIndexed: true }),
-    expiresAt: (0, import_fields13.timestamp)(commandOnly),
-    capturedAt: (0, import_fields13.timestamp)(commandOnly),
+    providerPaymentId: (0, import_fields13.text)({ ...fieldKit.commandOnly, isIndexed: true }),
+    expiresAt: (0, import_fields13.timestamp)(fieldKit.commandOnly),
+    capturedAt: (0, import_fields13.timestamp)(fieldKit.commandOnly),
     ...trackingFields
   }
 });
@@ -1190,13 +1202,13 @@ var NotificationLog = (0, import_core10.list)({
   fields: {
     profile: profileField("notifications"),
     kind: (0, import_fields13.text)(ro({ validation: { isRequired: true } })),
-    to: (0, import_fields13.text)(commandOnly),
-    subject: (0, import_fields13.text)(commandOnly),
-    link: (0, import_fields13.text)(commandOnly),
+    to: (0, import_fields13.text)(fieldKit.commandOnly),
+    subject: (0, import_fields13.text)(fieldKit.commandOnly),
+    link: (0, import_fields13.text)(fieldKit.commandOnly),
     status: readonlyEnum2(["sent", "failed", "skipped"], "skipped"),
-    error: (0, import_fields13.text)(commandOnly),
-    session: (0, import_fields13.relationship)({ ref: "Session", ...commandOnly }),
-    invoice: (0, import_fields13.relationship)({ ref: "Invoice", ...commandOnly }),
+    error: (0, import_fields13.text)(fieldKit.commandOnly),
+    session: (0, import_fields13.relationship)({ ref: "Session", ...fieldKit.commandOnly }),
+    invoice: (0, import_fields13.relationship)({ ref: "Invoice", ...fieldKit.commandOnly }),
     ...trackingFields
   }
 });

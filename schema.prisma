@@ -369,18 +369,17 @@ model Session {
   chargedMinutes               Int                      @default(0)
   billable                     SessionBillableType      @default(no)
   paymentStatus                SessionPaymentStatusType @default(not_due)
-  holdEndsAt                   DateTime
+  holdEndsAt                   DateTime?
   guardianMessage              String                   @default("")
   cancellationReason           String                   @default("")
   cancelledBy                  SessionCancelledByType   @default(none)
-  cancelledAt                  DateTime
-  completedAt                  DateTime
+  cancelledAt                  DateTime?
+  completedAt                  DateTime?
   rescheduleCount              Int                      @default(0)
-  rescheduledFrom              DateTime
-  reminderSentAt               DateTime
+  rescheduledFrom              DateTime?
+  reminderSentAt               DateTime?
   publicAccessTokenHash        String                   @default("")
-  note                         SessionNote?             @relation("Session_note", fields: [noteId], references: [id])
-  noteId                       String?                  @unique @map("note")
+  note                         SessionNote?             @relation("SessionNote_session")
   homework                     Homework[]               @relation("Homework_session")
   creditEntries                CreditEntry[]            @relation("CreditEntry_session")
   payments                     Payment[]                @relation("Payment_session")
@@ -400,13 +399,14 @@ model SessionNote {
   id          String       @id @default(cuid())
   profile     TutorProfile @relation("SessionNote_profile", fields: [profileId], references: [id])
   profileId   String       @map("profile")
-  session     Session?     @relation("Session_note")
+  session     Session?     @relation("SessionNote_session", fields: [sessionId], references: [id])
+  sessionId   String?      @unique @map("session")
   covered     String       @default("")
   wentWell    String       @default("")
   workOnNext  String       @default("")
   effort      Int?
   privateNote String       @default("")
-  sharedAt    DateTime
+  sharedAt    DateTime?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @default(now()) @updatedAt
 
@@ -428,11 +428,11 @@ model Homework {
   file_filesize   Int?
   file_filename   String?
   status          HomeworkStatusType @default(assigned)
-  handedInAt      DateTime
+  handedInAt      DateTime?
   guardianComment String             @default("")
   handInUrl       String             @default("")
   feedback        String             @default("")
-  reviewedAt      DateTime
+  reviewedAt      DateTime?
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @default(now()) @updatedAt
 
@@ -516,8 +516,8 @@ model PackagePurchase {
   pricePaidCents   Int                       @default(0)
   refundedCents    Int                       @default(0)
   status           PackagePurchaseStatusType @default(awaiting_payment)
-  purchasedAt      DateTime
-  expiresAt        DateTime
+  purchasedAt      DateTime?
+  expiresAt        DateTime?
   entries          CreditEntry[]             @relation("CreditEntry_purchase")
   payments         Payment[]                 @relation("Payment_purchase")
   paymentSessions  PaymentSession[]          @relation("PaymentSession_purchase")
@@ -539,6 +539,7 @@ model CreditEntry {
   sessionId  String?             @map("session")
   kind       CreditEntryKindType @default(grant)
   minutes    Int
+  heldChange Int                 @default(0)
   note       String              @default("")
   key        String              @unique @default("")
   createdAt  DateTime            @default(now())
@@ -557,14 +558,14 @@ model Invoice {
   familyId                     String?           @map("family")
   number                       String            @default("")
   status                       InvoiceStatusType @default(draft)
-  issuedAt                     DateTime
-  dueAt                        DateTime
+  issuedAt                     DateTime?
+  dueAt                        DateTime?
   periodMonth                  String            @default("")
   subtotalCents                Int               @default(0)
   totalCents                   Int               @default(0)
   paidCents                    Int               @default(0)
   note                         String            @default("")
-  voidedAt                     DateTime
+  voidedAt                     DateTime?
   lines                        InvoiceLine[]     @relation("InvoiceLine_invoice")
   payments                     Payment[]         @relation("Payment_invoice")
   paymentSessions              PaymentSession[]  @relation("PaymentSession_invoice")
@@ -590,7 +591,7 @@ model InvoiceLine {
   quantity    Int          @default(1)
   unitCents   Int          @default(0)
   totalCents  Int          @default(0)
-  sortOrder   Int          @default(0)
+  sortOrder   Int?         @default(0)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @default(now()) @updatedAt
 
@@ -624,9 +625,9 @@ model Payment {
   currencyCode       String            @default("USD")
   reference          String            @default("")
   providerReference  String            @default("")
-  paidAt             DateTime
+  paidAt             DateTime?
   reportedByGuardian Boolean           @default(false)
-  decidedAt          DateTime
+  decidedAt          DateTime?
   note               String            @default("")
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @default(now()) @updatedAt
@@ -676,8 +677,8 @@ model PaymentSession {
   amountCents       Int
   currencyCode      String                   @default("USD")
   providerPaymentId String                   @default("")
-  expiresAt         DateTime
-  capturedAt        DateTime
+  expiresAt         DateTime?
+  capturedAt        DateTime?
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @default(now()) @updatedAt
 

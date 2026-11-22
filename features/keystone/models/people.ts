@@ -3,7 +3,7 @@ import { integer, relationship, select, text } from '@keystone-6/core/fields'
 
 import { permissions } from '../access'
 import { trackingFields } from './trackingFields'
-import { commandOnly, ownCrud, profileField, secret, sameProfileHooks } from './fields'
+import { ownCrud, profileField, sameProfileHooks, fieldKit } from './fields'
 
 const textarea = { ui: { displayMode: 'textarea' as const } }
 const opt = (...values: string[]) => values.map((value) => ({ label: value.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()), value }))
@@ -27,17 +27,17 @@ export const Family = list({
     timezone: text(),
     howTheyFoundMe: text(),
     privateNotes: text({ ui: { displayMode: 'textarea', description: 'Only you see this.' } }),
-    user: relationship({ ref: 'User.family', ...commandOnly }),
-    inviteTokenHash: text(secret),
-    calendarTokenHash: text(secret),
-    students: relationship({ ref: 'Student.family', many: true, ...commandOnly }),
-    sessions: relationship({ ref: 'Session.family', many: true, ...commandOnly }),
-    series: relationship({ ref: 'RecurringSeries.family', many: true, ...commandOnly }),
-    purchases: relationship({ ref: 'PackagePurchase.family', many: true, ...commandOnly }),
-    invoices: relationship({ ref: 'Invoice.family', many: true, ...commandOnly }),
-    payments: relationship({ ref: 'Payment.family', many: true, ...commandOnly }),
-    reviews: relationship({ ref: 'Review.family', many: true, ...commandOnly }),
-    inquiries: relationship({ ref: 'Inquiry.family', many: true, ...commandOnly }),
+    user: relationship({ ref: 'User.family', ...fieldKit.commandOnly }),
+    inviteTokenHash: text(fieldKit.secret),
+    calendarTokenHash: text(fieldKit.secret),
+    students: relationship({ ref: 'Student.family', many: true, ...fieldKit.commandOnly }),
+    sessions: relationship({ ref: 'Session.family', many: true, ...fieldKit.commandOnly }),
+    series: relationship({ ref: 'RecurringSeries.family', many: true, ...fieldKit.commandOnly }),
+    purchases: relationship({ ref: 'PackagePurchase.family', many: true, ...fieldKit.commandOnly }),
+    invoices: relationship({ ref: 'Invoice.family', many: true, ...fieldKit.commandOnly }),
+    payments: relationship({ ref: 'Payment.family', many: true, ...fieldKit.commandOnly }),
+    reviews: relationship({ ref: 'Review.family', many: true, ...fieldKit.commandOnly }),
+    inquiries: relationship({ ref: 'Inquiry.family', many: true, ...fieldKit.commandOnly }),
     ...trackingFields,
   },
 })
@@ -59,11 +59,11 @@ export const Student = list({
     meetingUrl: text({ ui: { description: 'Overrides your default lesson link for this student.' } }),
     status: select({ type: 'enum', options: opt('active', 'paused', 'finished'), defaultValue: 'active', validation: { isRequired: true } }),
     subjects: relationship({ ref: 'Subject.students', many: true }),
-    sessions: relationship({ ref: 'Session.students', many: true, ...commandOnly }),
-    series: relationship({ ref: 'RecurringSeries.students', many: true, ...commandOnly }),
-    homework: relationship({ ref: 'Homework.student', many: true, ...commandOnly }),
-    marks: relationship({ ref: 'ProgressMark.student', many: true, ...commandOnly }),
-    resources: relationship({ ref: 'Resource.students', many: true, ...commandOnly }),
+    sessions: relationship({ ref: 'Session.students', many: true, ...fieldKit.commandOnly }),
+    series: relationship({ ref: 'RecurringSeries.students', many: true, ...fieldKit.commandOnly }),
+    homework: relationship({ ref: 'Homework.student', many: true, ...fieldKit.commandOnly }),
+    marks: relationship({ ref: 'ProgressMark.student', many: true, ...fieldKit.commandOnly }),
+    resources: relationship({ ref: 'Resource.students', many: true, ...fieldKit.commandOnly }),
     ...trackingFields,
   },
 })
@@ -83,8 +83,8 @@ export const Inquiry = list({
     studentLevel: text(),
     subject: text(),
     message: text(textarea),
-    status: select({ type: 'enum', options: opt('new', 'contacted', 'converted', 'closed'), defaultValue: 'new', validation: { isRequired: true }, ...commandOnly }),
-    family: relationship({ ref: 'Family.inquiries', ...commandOnly }),
+    status: select({ type: 'enum', options: opt('new', 'contacted', 'converted', 'closed'), defaultValue: 'new', validation: { isRequired: true }, ...fieldKit.commandOnly }),
+    family: relationship({ ref: 'Family.inquiries', ...fieldKit.commandOnly }),
     ...trackingFields,
   },
 })
@@ -99,7 +99,7 @@ export const Review = list({
   fields: {
     profile: profileField('reviews'),
     // One per family, enforced by `submitReview` under the family lock.
-    family: relationship({ ref: 'Family.reviews', ...commandOnly }),
+    family: relationship({ ref: 'Family.reviews', ...fieldKit.commandOnly }),
     displayName: text({ validation: { isRequired: true } }),
     rating: integer({ validation: { isRequired: true, min: 1, max: 5 } }),
     body: text(textarea),

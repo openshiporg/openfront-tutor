@@ -2417,15 +2417,15 @@ input SessionWhereInput {
   chargedMinutes: IntFilter
   billable: SessionBillableTypeNullableFilter
   paymentStatus: SessionPaymentStatusTypeNullableFilter
-  holdEndsAt: DateTimeFilter
+  holdEndsAt: DateTimeNullableFilter
   guardianMessage: StringFilter
   cancellationReason: StringFilter
   cancelledBy: SessionCancelledByTypeNullableFilter
-  cancelledAt: DateTimeFilter
-  completedAt: DateTimeFilter
+  cancelledAt: DateTimeNullableFilter
+  completedAt: DateTimeNullableFilter
   rescheduleCount: IntFilter
-  rescheduledFrom: DateTimeFilter
-  reminderSentAt: DateTimeFilter
+  rescheduledFrom: DateTimeNullableFilter
+  reminderSentAt: DateTimeNullableFilter
   publicAccessTokenHash: StringFilter
   note: SessionNoteWhereInput
   homework: HomeworkManyRelationFilter
@@ -2665,7 +2665,7 @@ input SessionNoteWhereInput {
   workOnNext: StringFilter
   effort: IntNullableFilter
   privateNote: StringFilter
-  sharedAt: DateTimeFilter
+  sharedAt: DateTimeNullableFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -2773,11 +2773,11 @@ input HomeworkWhereInput {
   dueAt: DateTimeNullableFilter
   linkUrl: StringFilter
   status: HomeworkStatusTypeNullableFilter
-  handedInAt: DateTimeFilter
+  handedInAt: DateTimeNullableFilter
   guardianComment: StringFilter
   handInUrl: StringFilter
   feedback: StringFilter
-  reviewedAt: DateTimeFilter
+  reviewedAt: DateTimeNullableFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -3185,8 +3185,8 @@ input PackagePurchaseWhereInput {
   pricePaidCents: IntFilter
   refundedCents: IntFilter
   status: PackagePurchaseStatusTypeNullableFilter
-  purchasedAt: DateTimeFilter
-  expiresAt: DateTimeFilter
+  purchasedAt: DateTimeNullableFilter
+  expiresAt: DateTimeNullableFilter
   entries: CreditEntryManyRelationFilter
   payments: PaymentManyRelationFilter
   paymentSessions: PaymentSessionManyRelationFilter
@@ -3279,6 +3279,7 @@ type CreditEntry {
   session: Session
   kind: CreditEntryKindType
   minutes: Int
+  heldChange: Int
   note: String
   key: String
   createdAt: DateTime
@@ -3311,6 +3312,7 @@ input CreditEntryWhereInput {
   session: SessionWhereInput
   kind: CreditEntryKindTypeNullableFilter
   minutes: IntFilter
+  heldChange: IntFilter
   note: StringFilter
   key: StringFilter
   createdAt: DateTimeFilter
@@ -3328,6 +3330,7 @@ input CreditEntryOrderByInput {
   id: OrderDirection
   kind: OrderDirection
   minutes: OrderDirection
+  heldChange: OrderDirection
   note: OrderDirection
   key: OrderDirection
   createdAt: OrderDirection
@@ -3340,6 +3343,7 @@ input CreditEntryUpdateInput {
   session: SessionRelateToOneForUpdateInput
   kind: CreditEntryKindType
   minutes: Int
+  heldChange: Int
   note: String
   key: String
   createdAt: DateTime
@@ -3363,6 +3367,7 @@ input CreditEntryCreateInput {
   session: SessionRelateToOneForCreateInput
   kind: CreditEntryKindType
   minutes: Int
+  heldChange: Int
   note: String
   key: String
   createdAt: DateTime
@@ -3419,14 +3424,14 @@ input InvoiceWhereInput {
   family: FamilyWhereInput
   number: StringFilter
   status: InvoiceStatusTypeNullableFilter
-  issuedAt: DateTimeFilter
-  dueAt: DateTimeFilter
+  issuedAt: DateTimeNullableFilter
+  dueAt: DateTimeNullableFilter
   periodMonth: StringFilter
   subtotalCents: IntFilter
   totalCents: IntFilter
   paidCents: IntFilter
   note: StringFilter
-  voidedAt: DateTimeFilter
+  voidedAt: DateTimeNullableFilter
   lines: InvoiceLineManyRelationFilter
   payments: PaymentManyRelationFilter
   paymentSessions: PaymentSessionManyRelationFilter
@@ -3536,7 +3541,7 @@ input InvoiceLineWhereInput {
   quantity: IntFilter
   unitCents: IntFilter
   totalCents: IntFilter
-  sortOrder: IntFilter
+  sortOrder: IntNullableFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }
@@ -3671,9 +3676,9 @@ input PaymentWhereInput {
   currencyCode: StringFilter
   reference: StringFilter
   providerReference: StringFilter
-  paidAt: DateTimeFilter
+  paidAt: DateTimeNullableFilter
   reportedByGuardian: BooleanFilter
-  decidedAt: DateTimeFilter
+  decidedAt: DateTimeNullableFilter
   note: StringFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
@@ -3933,8 +3938,8 @@ input PaymentSessionWhereInput {
   amountCents: IntFilter
   currencyCode: StringFilter
   providerPaymentId: StringFilter
-  expiresAt: DateTimeFilter
-  capturedAt: DateTimeFilter
+  expiresAt: DateTimeNullableFilter
+  capturedAt: DateTimeNullableFilter
   createdAt: DateTimeFilter
   updatedAt: DateTimeFilter
 }

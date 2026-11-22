@@ -8,16 +8,25 @@ type Perm = (args: { session?: Session }) => boolean
 
 const no = () => false
 
-/** Written only by the named commands; shown read-only in the dashboard. */
-export const commandOnly = {
-  access: { create: no, update: no },
-  ui: { createView: { fieldMode: 'hidden' as const }, itemView: { fieldMode: 'read' as const } },
-}
-
-/** Never readable or writable through the generic API. */
-export const secret = {
-  access: { read: no, create: no, update: no },
-  ui: { itemView: { fieldMode: 'hidden' as const }, createView: { fieldMode: 'hidden' as const }, listView: { fieldMode: 'hidden' as const } },
+/**
+ * Written only by the named commands; shown read-only in the dashboard.
+ * A getter, because Keystone writes into field config objects (a shared
+ * object would make every field using it non-nullable).
+ */
+export const fieldKit = {
+  get commandOnly() {
+    return {
+      access: { create: no, update: no },
+      ui: { createView: { fieldMode: 'hidden' as const }, itemView: { fieldMode: 'read' as const } },
+    }
+  },
+  /** Never readable or writable through the generic API. */
+  get secret() {
+    return {
+      access: { read: no, create: no, update: no },
+      ui: { itemView: { fieldMode: 'hidden' as const }, createView: { fieldMode: 'hidden' as const }, listView: { fieldMode: 'hidden' as const } },
+    }
+  },
 }
 
 /** The owning tutor profile: required, attached from the session, never from input. */

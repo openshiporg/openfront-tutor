@@ -2,7 +2,7 @@ import type { PaymentAdapterArgs } from './types'
 
 // Stripe Checkout through Stripe's REST API. Like E-commerce, the secret key
 // comes from STRIPE_SECRET_KEY; without it the adapter is unavailable and the
-// barber keeps taking deposits in person. Money is confirmed by reading the
+// tutor is paid directly (payment instructions and reported payments). Money is confirmed by reading the
 // Checkout Session back from Stripe, never from the browser.
 
 const API = 'https://api.stripe.com/v1'
@@ -68,7 +68,7 @@ export async function createPaymentFunction({ amount, currency, successUrl, canc
       'line_items[0][quantity]': 1,
       'line_items[0][price_data][currency]': asString(currency || 'usd').toLowerCase(),
       'line_items[0][price_data][unit_amount]': cents,
-      'line_items[0][price_data][product_data][name]': asString(description) || 'Deposit',
+      'line_items[0][price_data][product_data][name]': asString(description) || 'Tutoring',
       ...Object.fromEntries(Object.entries(meta).map(([key, value]) => [`metadata[${key}]`, asString(value)])),
     }),
   })
@@ -79,7 +79,7 @@ export const generatePaymentLinkFunction = createPaymentFunction
 
 export async function getPaymentStatusFunction({ paymentId }: PaymentAdapterArgs) {
   const session = await stripe<CheckoutSession>(`/checkout/sessions/${encodeURIComponent(asString(paymentId))}`)
-  return { status: sessionStatus(session), amount: session.amount_total, data: { id: session.id, status: session.status, paymentStatus: session.payment_status, paymentIntent: session.payment_intent, amount: session.amount_total } }
+  return { status: sessionStatus(session), amount: session.amount_total, currency: session.currency, data: { id: session.id, status: session.status, paymentStatus: session.payment_status, paymentIntent: session.payment_intent, amount: session.amount_total, currency: session.currency } }
 }
 
 /** Checkout captures on payment; capture reports the session's settled state. */
