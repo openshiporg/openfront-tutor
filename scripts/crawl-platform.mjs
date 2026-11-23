@@ -53,7 +53,9 @@ try {
     if (url.origin !== base.origin) return route.abort()
     if (['GET', 'HEAD'].includes(req.method())) return route.continue()
     if (login && req.method() === 'POST' && ['/dashboard/signin', '/api/graphql'].includes(url.pathname)) return route.continue()
-    // The crawl never submits forms, server actions, GraphQL mutations or jobs.
+    // Next.js may POST server actions to load read-only panels after navigation.
+    // Explicitly opt in only on the seeded QA database; no action forms are clicked.
+    if (process.env.ALLOW_NAVIGATION_POSTS === '1' && req.method() === 'POST' && req.headers()['next-action']) return route.continue()
     issues.push(`Blocked write: ${req.method()} ${url.pathname}`)
     return route.abort()
   })
